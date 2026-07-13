@@ -5,6 +5,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
+    "start": "tsx server.ts",
     "dev": "tsx server.ts",
     "worker:scrape": "tsx src/workers/scrape_worker.ts",
     "worker:sources": "tsx src/workers/source_enrichment_worker.ts",
@@ -15,6 +16,8 @@
     "test:all-scrapers": "tsx src/scripts/test_all_scrapers.ts",
     "backfill:answer-blocks": "tsx src/scripts/backfill_answer_blocks.ts",
     "reindex:sara": "tsx src/scripts/reindex_sara_project.ts",
+    "migrate:pg": "tsx src/scripts/apply_migrations_pg.ts",
+    "supabase:schema:sync": "tsx src/scripts/sync_supabase_schema.ts",
     "clear:db-except-users": "tsx src/scripts/clear_app_data_except_users.ts",
     "clear:redis": "tsx src/scripts/clear_redis_queues.ts",
     "db:counts": "tsx src/scripts/verify_table_counts.ts",
@@ -47,6 +50,7 @@
     "prisma": "^7.8.0",
     "resend": "^6.16.0",
     "stripe": "^22.3.0",
+    "tsx": "^4.22.4",
     "winston": "^3.19.0",
     "zod": "^4.4.3"
   },
@@ -60,7 +64,6 @@
     "@types/pdfkit": "^0.17.6",
     "nodemon": "^3.1.14",
     "ts-node": "^10.9.2",
-    "tsx": "^4.22.4",
     "typescript": "^6.0.3"
   }
 }

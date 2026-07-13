@@ -25,6 +25,13 @@ import productTourRoutes from './src/features/product_tour/product_tour_routes'
 import { stripeWebhookController } from './src/features/subscription/subscription_controller'
 import { requireAdmin, requireAuth } from './src/middleware/auth'
 
+process.on("uncaughtException", error => {
+    console.error("Uncaught exception during startup/runtime", error)
+})
+
+process.on("unhandledRejection", reason => {
+    console.error("Unhandled promise rejection during startup/runtime", reason)
+})
 
 const app = express()
 const PORT = process.env.PORT || 3000
@@ -33,6 +40,9 @@ app.use(helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" },
 }))
 app.use(cors())
+app.get('/health', (_req, res) => {
+    res.status(200).json({ ok: true })
+})
 app.post('/api/subscription/webhook', express.raw({ type: 'application/json' }), stripeWebhookController)
 app.use(express.json())
 
