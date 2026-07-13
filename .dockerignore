@@ -1,0 +1,16 @@
+.env
+.env.*
+node_modules
+npm-debug.log*
+dist
+build
+coverage
+logs
+*.log
+auth_state.json
+.git
+.agents
+.codex
+src/scraping/venv
+src/scraping/browser_profiles
+src/scraping/results
