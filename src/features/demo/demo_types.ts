@@ -1,0 +1,8 @@
+export type DemoInput = {
+    name: string,
+    email: string,
+    company: string,
+    notes?: string,
+    scheduledAt: Date,
+    timezone: string,
+}

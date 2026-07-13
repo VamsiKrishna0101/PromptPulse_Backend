@@ -1,0 +1,610 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum AccountType {
+  SINGLE
+  AGENCY
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum Plan {
+  FREE
+  STARTER
+  GROWTH
+  PRO
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  INCOMPLETE
+}
+
+enum SourceType {
+  EDITORIAL
+  CORPORATE
+  UGC
+  SOCIAL
+  COMPETITOR
+  YOU
+  REFERENCE
+  INSTITUTIONAL
+  OTHER
+}
+
+enum SourceUrlType {
+  LISTICLE
+  COMPARISON
+  DISCUSSION
+  ARTICLE
+  DOCUMENTATION
+  REVIEW
+  SOCIAL_POST
+  HOMEPAGE
+  OTHER
+}
+
+enum Engine {
+  CHATGPT
+  GEMINI
+  PERPLEXITY
+  GOOGLE_AI_OVERVIEW
+  GOOGLE_AI_MODE
+}
+
+enum PromptStatus {
+  SUGGESTED
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+  DELETED
+}
+
+enum PromptSource {
+  GENERATED
+  CUSTOMER
+  ADMIN
+}
+
+enum VisibilityRunStatus {
+  QUEUED
+  RUNNING
+  SUCCESS
+  PARTIAL_SUCCESS
+  FAILED
+}
+
+enum ScrapeJobStatus {
+  QUEUED
+  RUNNING
+  SUCCESS
+  FAILED
+  MANUAL_NEEDED
+  RATE_LIMITED
+}
+
+enum WebAnalyticsEventType {
+  PAGE_VIEW
+  CUSTOM
+}
+
+enum WebAnalyticsCustomEventType {
+  TOTAL_CHART
+  AVERAGE_CHART
+  TOTAL_LIST
+  AVERAGE_LIST
+}
+
+enum SaraMessageRole {
+  USER
+  ASSISTANT
+}
+
+enum DemoStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+model User {
+  id             String      @id @default(uuid())
+  email          String      @unique
+  password       String
+  is_verified    Boolean     @default(false)
+  otp            String?
+  otp_expires_at DateTime?
+  account_type   AccountType
+  role           UserRole    @default(USER)
+  plan           Plan        @default(FREE)
+  product_tour_completed Boolean @default(false)
+  product_tour_completed_at DateTime?
+  created_at     DateTime    @default(now())
+  updated_at     DateTime    @updatedAt
+
+  projects       Project[]
+  sara_conversations SaraConversation[]
+  subscriptions  Subscription[]
+  plan_usages    PlanUsage[]
+  helpcenter     HelpCenter[]
+  ai_reports     AIReport[]
+  content_briefs ContentBrief[]
+}
+
+model Project {
+  id             String       @id @default(uuid())
+  brand_name     String       @unique
+  brand_url      String
+  brand_location String
+  user_id        String
+  user           User         @relation(fields: [user_id], references: [id])
+  created_at     DateTime     @default(now())
+  updated_at     DateTime     @updatedAt
+
+  prompts        Prompt[]
+  competitors    Competitor[]
+  runs           Run[]
+  scrape_jobs    ScrapeJob[]
+  web_analytics_sites WebAnalyticsSite[]
+  sara_conversations SaraConversation[]
+  topics Topic[]
+  ai_reports AIReport[]
+  content_briefs ContentBrief[]
+}
+
+model ContentBrief {
+  id                 String   @id @default(uuid())
+  project_id         String
+  project            Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  user_id            String
+  user               User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  status             String
+  title              String
+  slug               String?
+  topic              String?
+  target_prompt_id   String?
+  target_prompt_text String
+  content_type       String?
+  action             String?
+  opportunity_offset Int      @default(0)
+  brief              Json
+  article            Json?
+  prompt_used        Json?
+  generation_error   String?
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+
+  @@unique([project_id, user_id, target_prompt_id, opportunity_offset])
+  @@index([project_id, user_id, updated_at])
+  @@index([user_id, updated_at])
+}
+
+model AIReport {
+  id                     String   @id
+  project_id             String
+  project                Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  user_id                String
+  user                   User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  brand_name             String
+  period_type            String
+  period_start           DateTime
+  period_end             DateTime
+  previous_period_start  DateTime
+  previous_period_end    DateTime
+  status                 String
+  summary                Json?
+  report                 Json
+  errors                 Json     @default("[]")
+  created_at             DateTime @default(now())
+  updated_at             DateTime @updatedAt
+
+  @@index([project_id, created_at])
+  @@index([user_id, created_at])
+}
+
+model Topic {
+  id         String   @id @default(uuid())
+  name       String
+  project_id String
+  project    Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@unique([project_id, name])
+  @@index([project_id])
+}
+model Prompt {
+  id             String       @id @default(uuid())
+  text           String
+  topic          String
+  tags           String[]     @default([])
+  type           String
+  project_id     String
+  project        Project      @relation(fields: [project_id], references: [id])
+  is_active      Boolean      @default(true)
+  status         PromptStatus @default(ACTIVE)
+  source         PromptSource @default(GENERATED)
+  geo_enabled    Boolean      @default(false)
+  priority_score Float?
+  volume_score   Float?
+  last_run_at    DateTime?
+  created_at     DateTime     @default(now())
+  updated_at     DateTime     @default(now()) @updatedAt
+
+  chats        Chat[]
+  scrape_jobs  ScrapeJob[]
+  geo_variants GeoPromptVariant[]
+}
+
+model GeoPromptVariant {
+  id           String   @id @default(uuid())
+  prompt_id    String
+  prompt       Prompt   @relation(fields: [prompt_id], references: [id], onDelete: Cascade)
+  country_code String   // ISO 3166-1 alpha-2, e.g. "DE", "US", "IN"
+  country_name String   // "Germany", "United States"
+  city         String?  // Optional: "Munich", "Berlin"
+  is_active    Boolean  @default(true)
+  created_at   DateTime @default(now())
+
+  scrape_jobs ScrapeJob[]
+  chats       Chat[]
+
+  @@unique([prompt_id, country_code, city])
+  @@index([prompt_id])
+}
+
+model Competitor {
+  id         String   @id @default(uuid())
+  name       String
+  url        String?
+  project_id String
+  project    Project  @relation(fields: [project_id], references: [id])
+  created_at DateTime @default(now())
+}
+
+model Run {
+  id         String   @id @default(uuid())
+  project_id String
+  project    Project  @relation(fields: [project_id], references: [id])
+  status     VisibilityRunStatus @default(QUEUED)
+  scheduled_for DateTime?
+  started_at DateTime?
+  completed_at DateTime?
+  error_reason String?
+  ran_at     DateTime @default(now())
+
+  chats      Chat[]
+  scrape_jobs ScrapeJob[]
+}
+
+model Chat {
+  id               String    @id @default(uuid())
+  run_id           String
+  run              Run       @relation(fields: [run_id], references: [id])
+  prompt_id        String
+  prompt           Prompt    @relation(fields: [prompt_id], references: [id])
+  geo_variant_id   String?
+  geo_variant      GeoPromptVariant? @relation(fields: [geo_variant_id], references: [id])
+  geo_country_code String?   // "DE"
+  geo_country_name String?   // "Germany"
+  geo_city         String?   // "Munich"
+  ai_model         String
+  raw_response     String
+  answer_blocks    Json?
+  screenshot_path  String?
+  brand_mentioned  Boolean
+  brand_position   Int?
+  sentiment_score  Float?
+  created_at       DateTime  @default(now())
+
+  brand_mentions BrandMention[]
+  sources        Source[]
+  scrape_job     ScrapeJob?
+}
+
+model ScrapeJob {
+  id               String           @id @default(uuid())
+  run_id           String
+  run              Run              @relation(fields: [run_id], references: [id])
+  project_id       String
+  project          Project          @relation(fields: [project_id], references: [id])
+  prompt_id        String
+  prompt           Prompt           @relation(fields: [prompt_id], references: [id])
+  geo_variant_id   String?
+  geo_variant      GeoPromptVariant? @relation(fields: [geo_variant_id], references: [id])
+  geo_country_code String?
+  geo_country_name String?
+  geo_city         String?
+  chat_id          String?          @unique
+  chat             Chat?            @relation(fields: [chat_id], references: [id])
+  engine           Engine
+  status           ScrapeJobStatus  @default(QUEUED)
+  profile          String?
+  answer_text      String?
+  raw_text         String?
+  citations        Json?
+  screenshot_path  String?
+  retry_count      Int              @default(0)
+  error_reason     String?
+  scheduled_for    DateTime?
+  started_at       DateTime?
+  completed_at     DateTime?
+  created_at       DateTime         @default(now())
+  updated_at       DateTime         @updatedAt
+}
+
+model BrandMention {
+  id              String   @id @default(uuid())
+  chat_id         String
+  chat            Chat     @relation(fields: [chat_id], references: [id])
+  brand_name      String
+  position        Int?
+  sentiment_score Float?
+  created_at      DateTime @default(now())
+}
+
+model Source {
+  id                    String            @id @default(uuid())
+  chat_id               String
+  chat                  Chat              @relation(fields: [chat_id], references: [id])
+  source_url_content_id String?
+  source_url_content    SourceUrlContent? @relation(fields: [source_url_content_id], references: [id])
+  url                   String
+  domain                String
+  source_type           SourceType        @default(OTHER)
+  url_type              SourceUrlType     @default(OTHER)
+  is_cited              Boolean           @default(false)
+  used_by_ai            Boolean           @default(true)
+  title                 String?
+  snippet               String?
+  platform              String?
+  subreddit             String?
+  mentioned_brands      Json?
+  created_at            DateTime          @default(now())
+  updated_at            DateTime          @default(now()) @updatedAt
+}
+
+model SourceUrlContent {
+  id                 String        @id @default(uuid())
+  url                String        @unique
+  domain             String
+  title              String?
+  content            String?
+  snippet            String?
+  content_length     Int           @default(0)
+  source_type        SourceType    @default(OTHER)
+  url_type           SourceUrlType @default(OTHER)
+  platform           String?
+  subreddit          String?
+  mentioned_brands   Json?
+  fetch_status       String        @default("PENDING")
+  error_reason       String?
+  content_updated_at DateTime?
+  created_at         DateTime      @default(now())
+  updated_at         DateTime      @default(now()) @updatedAt
+
+  sources            Source[]
+}
+
+model WebAnalyticsSite {
+  id         String   @id @default(uuid())
+  project_id String
+  project    Project  @relation(fields: [project_id], references: [id])
+  name       String
+  domain     String
+  public_key String   @unique
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  sessions   WebAnalyticsSession[]
+  events     WebAnalyticsEvent[]
+  custom_events WebAnalyticsCustomEvent[]
+
+  @@index([project_id])
+  @@index([public_key])
+}
+
+model WebAnalyticsSession {
+  id           String   @id @default(uuid())
+  site_id      String
+  site         WebAnalyticsSite @relation(fields: [site_id], references: [id])
+  visitor_id   String
+  ip_hash      String?
+  user_agent   String?
+  browser      String?
+  browser_version String?
+  browser_width Int?
+  browser_height Int?
+  os           String?
+  os_version   String?
+  device       String?
+  language     String?
+  screen_width Int?
+  screen_height Int?
+  screen_color_depth Int?
+  country      String?
+  referrer     String?
+  source       String?
+  medium       String?
+  landing_page String?
+  started_at   DateTime @default(now())
+  last_seen_at DateTime @default(now())
+
+  events       WebAnalyticsEvent[]
+  actions      WebAnalyticsAction[]
+
+  @@unique([site_id, visitor_id])
+  @@index([site_id, last_seen_at])
+}
+
+model WebAnalyticsEvent {
+  id          String   @id @default(uuid())
+  site_id     String
+  site        WebAnalyticsSite @relation(fields: [site_id], references: [id])
+  session_id  String?
+  session     WebAnalyticsSession? @relation(fields: [session_id], references: [id])
+  type        WebAnalyticsEventType @default(PAGE_VIEW)
+  path        String
+  url         String?
+  title       String?
+  referrer    String?
+  event_name  String?
+  event_value Json?
+  duration_ms Int?
+  metadata    Json?
+  created_at  DateTime @default(now())
+
+  @@index([site_id, created_at])
+  @@index([site_id, type, created_at])
+  @@index([session_id])
+}
+
+model WebAnalyticsCustomEvent {
+  id         String   @id @default(uuid())
+  site_id    String
+  site       WebAnalyticsSite @relation(fields: [site_id], references: [id])
+  title      String
+  type       WebAnalyticsCustomEventType @default(TOTAL_CHART)
+  key        String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  actions    WebAnalyticsAction[]
+
+  @@index([site_id])
+}
+
+model WebAnalyticsAction {
+  id              String   @id @default(uuid())
+  custom_event_id String
+  custom_event    WebAnalyticsCustomEvent @relation(fields: [custom_event_id], references: [id])
+  session_id       String?
+  session          WebAnalyticsSession? @relation(fields: [session_id], references: [id])
+  key              String?
+  value            Float   @default(1)
+  details          String?
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  @@index([custom_event_id, created_at])
+  @@index([session_id])
+}
+
+model SaraConversation {
+  id         String   @id @default(uuid())
+  project_id String
+  project    Project  @relation(fields: [project_id], references: [id])
+  user_id    String
+  user       User     @relation(fields: [user_id], references: [id])
+  title      String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  messages   SaraMessage[]
+
+  @@index([project_id, updated_at])
+  @@index([user_id, updated_at])
+}
+
+model SaraMessage {
+  id              String          @id @default(uuid())
+  conversation_id String
+  conversation    SaraConversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+  role            SaraMessageRole
+  content         String
+  citations       Json?
+  suggested_actions String[] @default([])
+  retrieved_context Json?
+  confidence      String?
+  created_at      DateTime @default(now())
+
+  @@index([conversation_id, created_at])
+}
+
+model Subscription {
+  id                     String             @id @default(uuid())
+  user_id                String
+  user                   User               @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  plan                   Plan
+  status                 SubscriptionStatus @default(TRIALING)
+  amount_cents           Int
+  currency               String             @default("usd")
+  current_period_start   DateTime?
+  current_period_end     DateTime?
+  cancel_at_period_end   Boolean            @default(false)
+  stripe_customer_id     String?
+  stripe_subscription_id String?            @unique
+  trial_starts_at        DateTime           @default(now())
+  trial_ends_at          DateTime?
+  created_at             DateTime           @default(now())
+  updated_at             DateTime           @updatedAt
+
+  @@index([user_id, status])
+  @@index([user_id, plan])
+}
+
+model PlanUsage {
+  id                  String   @id @default(uuid())
+  user_id             String
+  user                User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  prompt_count        Int      @default(0)
+  project_count       Int      @default(0)
+  competitor_count    Int      @default(0)
+  monthly_runs_used   Int      @default(0)
+  period_start        DateTime
+  period_end          DateTime
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  @@unique([user_id, period_start, period_end])
+  @@index([user_id, period_start, period_end])
+}
+
+model HelpCenter {
+  id          String   @id @default(uuid())
+  email       String
+  subject     String
+  message     String
+
+  user_id     String
+  user        User     @relation(fields: [user_id], references: [id])
+
+  is_resolved Boolean  @default(false)
+
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@index([user_id])
+  @@index([is_resolved])
+}
+
+
+model BookDemo {
+  id          String     @id @default(uuid())
+
+  name        String
+  email       String
+  company     String?
+  notes       String?
+
+  scheduledAt DateTime
+  timezone    String
+
+  status      DemoStatus @default(PENDING)
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}

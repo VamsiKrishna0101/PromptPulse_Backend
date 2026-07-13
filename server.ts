@@ -1,0 +1,62 @@
+import 'dotenv/config'
+import express from 'express'
+import cors from 'cors'
+import helmet from 'helmet'
+import authRoutes from './src/features/auth/auth_routes'
+import onboardingRoutes from './src/features/onboarding/onboarding_routes'
+import dashboardRoutes from './src/features/dashboard/dashboard_route'
+import sourcesRoutes from './src/features/sources/sources_routes'
+import brandRoutes from './src/features/brands/brand_routes'
+import scrapingRoutes from './src/features/scraping/scraping_routes'
+import projectRoutes from './src/features/projects/projects_routes'
+import promptRoutes from './src/features/prompts/prompt_routes'
+import webAnalyticsRoutes from './src/features/webanalytics/webanalytics_routes'
+import saraRoutes from './src/features/sara/sara_routes'
+import subscriptionRoutes from './src/features/subscription/subscription_routes'
+import profileRoutes from './src/features/profile/profile_routes'
+import settingsRoutes from './src/features/settings/settings_routes'
+import helpRoutes from './src/features/help/help_routes'
+import exportRoutes from './src/features/exports/export_routes'
+import opportunityRoutes from './src/features/opportunities/opportunity_routes'
+import geoArticleRoutes from './src/features/geoartciles/geoarticle_routes'
+import adminRoutes from './src/features/admin/admin_routes'
+import demoRoutes from './src/features/demo/demo_routes'
+import productTourRoutes from './src/features/product_tour/product_tour_routes'
+import { stripeWebhookController } from './src/features/subscription/subscription_controller'
+import { requireAdmin, requireAuth } from './src/middleware/auth'
+
+
+const app = express()
+const PORT = process.env.PORT || 3000
+
+app.use(helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+}))
+app.use(cors())
+app.post('/api/subscription/webhook', express.raw({ type: 'application/json' }), stripeWebhookController)
+app.use(express.json())
+
+app.use('/api/auth', authRoutes)
+app.use('/api/onboarding', requireAuth, onboardingRoutes)
+app.use('/api/dashboard', requireAuth, dashboardRoutes)
+app.use('/api/sources', requireAuth, sourcesRoutes)
+app.use('/api/brands', requireAuth, brandRoutes)
+app.use('/api/scraping', requireAuth, scrapingRoutes)
+app.use('/api/projects', requireAuth, projectRoutes)
+app.use('/api/prompts', requireAuth, promptRoutes)
+app.use('/api/sara', requireAuth, saraRoutes)
+app.use('/api/subscription', requireAuth, subscriptionRoutes)
+app.use('/api/profile', requireAuth, profileRoutes)
+app.use('/api/settings', requireAuth, settingsRoutes)
+app.use('/api/help', requireAuth, helpRoutes)
+app.use('/api/exports', requireAuth, exportRoutes)
+app.use('/api/opportunities', requireAuth, opportunityRoutes)
+app.use('/api/geoarticles', requireAuth, geoArticleRoutes)
+app.use('/api/product-tour', requireAuth, productTourRoutes)
+app.use('/api/admin', requireAuth, requireAdmin, adminRoutes)
+app.use('/api/webanalytics', webAnalyticsRoutes)
+app.use('/api/demo', demoRoutes)
+
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`)
+})

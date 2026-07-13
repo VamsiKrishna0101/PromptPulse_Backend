@@ -1,0 +1,27 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Build and runtime output
+dist/
+build/
+coverage/
+logs/
+*.log
+
+# Local scripts / browser scraping state
+auth_state.json
+src/scraping/venv/
+src/scraping/browser_profiles/
+src/scraping/results/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
