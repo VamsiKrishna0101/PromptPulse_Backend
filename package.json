@@ -22,6 +22,7 @@
     "clear:redis": "tsx src/scripts/clear_redis_queues.ts",
     "db:counts": "tsx src/scripts/verify_table_counts.ts",
     "seed:demo-history": "tsx src/scripts/seed_demo_history.ts",
+    "seed:verified-user": "tsx src/scripts/upsert_verified_user.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",

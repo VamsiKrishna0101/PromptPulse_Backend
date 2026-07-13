@@ -1,6 +1,7 @@
 import "dotenv/config"
 import { Engine, ScrapeJobStatus, VisibilityRunStatus } from "@prisma/client"
 import { Worker } from "bullmq"
+import express from "express"
 import prisma from "../lib/prisma"
 import { getRedisConnectionOptions } from "../lib/redis"
 import { SCRAPE_QUEUE_NAME, type ScrapeQueueJob } from "../queues/scrape_queue"
@@ -154,6 +155,31 @@ worker.on("failed", async (job, error) => {
     }
     console.error(`Scrape job failed: ${job?.id}`, error)
 })
+
+if (process.env.PORT) {
+    const app = express()
+    const port = Number(process.env.PORT)
+
+    app.get("/", (_req, res) => {
+        res.json({
+            service: "scrape-worker",
+            status: "ok",
+            queue: SCRAPE_QUEUE_NAME
+        })
+    })
+
+    app.get("/health", (_req, res) => {
+        res.json({
+            status: "ok",
+            queue: SCRAPE_QUEUE_NAME,
+            worker_running: worker.isRunning()
+        })
+    })
+
+    app.listen(port, "0.0.0.0", () => {
+        console.log(`Scrape worker health server listening on ${port}`)
+    })
+}
 
 process.on("SIGINT", async () => {
     await worker.close()
