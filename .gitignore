@@ -2,6 +2,9 @@
 .env
 .env.*
 !.env.example
+gcp/*.json
+*service-account*.json
+*artifacts-key*.json
 
 # Dependencies
 node_modules/

@@ -127,6 +127,11 @@ export async function summarizeBrandResearch(
     }
 }
 
+// Maximum characters of raw response we send to the analysis LLM.
+// Keeps the generated JSON well under token limits while still having
+// enough context to find brands, sentiment, and sources.
+const MAX_RAW_FOR_ANALYSIS = 14_000
+
 export async function analyzeResponse(
     raw_response: string,
     ai_model: string,
@@ -135,7 +140,11 @@ export async function analyzeResponse(
     citations?: { url?: string | null; domain?: string | null; title?: string | null }[]
 ): Promise<AnalysisResult & { ai_model: string }> {
     const systemPrompt = buildAnalysisSystemPrompt()
-    const userPrompt = buildAnalysisUserPrompt(raw_response, brand_name, brand_url, citations)
+    // Truncate to keep the outgoing prompt + JSON response within token budget.
+    const truncatedResponse = raw_response.length > MAX_RAW_FOR_ANALYSIS
+        ? raw_response.slice(0, MAX_RAW_FOR_ANALYSIS) + '\n[...truncated for analysis...]'
+        : raw_response
+    const userPrompt = buildAnalysisUserPrompt(truncatedResponse, brand_name, brand_url, citations)
 
     if (hasBedrockGateway()) {
         const parsed = parseJson<AnalysisResult>(
@@ -163,6 +172,37 @@ export async function analyzeResponse(
     }
 }
 
+/**
+ * Tries to salvage a JSON string that was truncated mid-way.
+ *
+ * Strategy:
+ * 1. Remove the last (incomplete) key–value pair by walking back to the last
+ *    complete comma or opening brace.
+ * 2. Close the object with }.
+ * 3. Parse again — if it still fails, throw the original error.
+ */
+function repairTruncatedJson(raw: string): unknown {
+    // Try progressively shorter slices until we get a valid object
+    let attempt = raw.trim()
+
+    // Remove trailing partial string — find the last correctly terminated string value
+    // by working backwards from the end
+    for (let cutAt = attempt.length - 1; cutAt > 10; cutAt--) {
+        const ch = attempt[cutAt]
+        // Look for a position that is either after a closing " or after a comma/digit/bool
+        if (ch === ',' || ch === '{') {
+            const candidate = attempt.slice(0, cutAt) + '}'
+            try {
+                return JSON.parse(candidate)
+            } catch {
+                // keep trimming
+            }
+        }
+    }
+
+    throw new SyntaxError(`Could not repair truncated JSON (length=${raw.length})`)
+}
+
 function parseJson<T>(raw: string): T {
     const cleaned = raw
         .trim()
@@ -171,7 +211,21 @@ function parseJson<T>(raw: string): T {
         .replace(/\n?```$/i, '')
         .trim()
 
-    return JSON.parse(cleaned) as T
+    try {
+        return JSON.parse(cleaned) as T
+    } catch (firstError) {
+        // The JSON was likely truncated (LLM hit output token limit).
+        // Try to recover the partial object — at minimum we can get brands/sources
+        try {
+            console.warn('[parseJson] JSON truncated — attempting repair', {
+                length: cleaned.length,
+                tail: cleaned.slice(-120),
+            })
+            return repairTruncatedJson(cleaned) as T
+        } catch {
+            throw firstError // re-throw the original error for the outer catch
+        }
+    }
 }
 
 function normalizeAnalysisResult(
@@ -182,6 +236,11 @@ function normalizeAnalysisResult(
     citations: { url?: string | null; domain?: string | null; title?: string | null }[] = []
 ): AnalysisResult {
     const brandMentioned = hasVisibleBrandMention(rawResponse, brandName, brandUrl)
+    const normalizedBrandMentions = dedupeBrandMentions([
+        ...analysis.brand_mentions,
+        ...extractKnownBrandMentions(rawResponse),
+    ], citations)
+
     const citationSources = citations
         .filter(citation => citation.url)
         .map(citation => ({
@@ -190,14 +249,35 @@ function normalizeAnalysisResult(
             source_type: classifySourceDomain(
                 citation.domain || safeDomain(citation.url) || citation.url!,
                 brandUrl,
-                analysis.brand_mentions.map(mention => mention.brand_name)
+                normalizedBrandMentions.map(mention => mention.brand_name)
             ),
             is_cited: true,
         } satisfies AnalysisResult["sources"][number]))
 
     const explicitDomains = extractExplicitDomains(rawResponse)
+
+    // Detect forum community citations: "r/SaaS", "r/MachineLearning" → reddit.com; "Quora" → quora.com
+    const forumSources: AnalysisResult["sources"] = []
+    if (/\br\/[A-Za-z0-9_]+\b/.test(rawResponse)) {
+        forumSources.push({
+            url: "https://reddit.com",
+            domain: "reddit.com",
+            source_type: "UGC",
+            is_cited: true,
+        })
+    }
+    if (/\bquora\.com\b|\bQuora\b/i.test(rawResponse)) {
+        forumSources.push({
+            url: "https://quora.com",
+            domain: "quora.com",
+            source_type: "UGC",
+            is_cited: true,
+        })
+    }
+
     const normalizedSources = dedupeSources([
         ...citationSources,
+        ...forumSources,
         ...analysis.sources.filter(source => {
             if (!source.url && !source.domain) return false
             if (isAiEngineDomain(source.domain || source.url)) return false
@@ -211,7 +291,7 @@ function normalizeAnalysisResult(
         brand_mentioned: brandMentioned,
         brand_position: brandMentioned ? analysis.brand_position : null,
         sentiment_score: brandMentioned ? analysis.sentiment_score : null,
-        brand_mentions: dedupeBrandMentions(analysis.brand_mentions, citations),
+        brand_mentions: normalizedBrandMentions,
         sources: normalizedSources,
     }
 }
@@ -234,15 +314,44 @@ function dedupeBrandMentions(
     const seen = new Set<string>()
     const normalized: AnalysisResult["brand_mentions"] = []
     for (const mention of mentions) {
-        const key = mention.brand_name.trim().toLowerCase()
+        const brandName = canonicalBrandName(mention.brand_name)
+        const key = brandName.toLowerCase()
         if (!key || seen.has(key)) continue
         seen.add(key)
         normalized.push({
             ...mention,
-            domain: normalizeBrandDomain(mention.domain) || domainFromCitations(mention.brand_name, citations) || knownBrandDomain(mention.brand_name),
+            brand_name: brandName,
+            domain: normalizeBrandDomain(mention.domain) || domainFromCitations(brandName, citations) || knownBrandDomain(brandName),
         })
     }
     return normalized
+}
+
+function extractKnownBrandMentions(rawResponse: string): AnalysisResult["brand_mentions"] {
+    const detected = KNOWN_BRANDS
+        .map(brand => {
+            const indexes = [brand.name, ...(brand.aliases ?? [])]
+                .map(alias => firstVisibleMentionIndex(rawResponse, alias))
+                .filter((index): index is number => index !== null)
+            const firstIndex = indexes.length ? Math.min(...indexes) : null
+            return firstIndex === null ? null : { brand, firstIndex }
+        })
+        .filter((item): item is { brand: KnownBrand; firstIndex: number } => Boolean(item))
+        .sort((a, b) => a.firstIndex - b.firstIndex)
+
+    return detected.map((item, index) => ({
+        brand_name: item.brand.name,
+        domain: item.brand.domain,
+        position: index + 1,
+        sentiment_score: 50,
+    }))
+}
+
+function firstVisibleMentionIndex(text: string, brandName: string) {
+    const pattern = new RegExp(`(^|[^a-z0-9])${escapeRegExp(brandName)}([^a-z0-9]|$)`, "i")
+    const match = pattern.exec(text)
+    if (!match) return null
+    return match.index + (match[1]?.length ?? 0)
 }
 
 function dedupeSources(sources: AnalysisResult["sources"]) {
@@ -362,31 +471,53 @@ function isAiEngineDomain(domainOrUrl: string | null | undefined) {
     ].includes(domain)
 }
 
+type KnownBrand = {
+    name: string
+    domain: string
+    aliases?: string[]
+}
+
+const KNOWN_BRANDS: KnownBrand[] = [
+    { name: "Peec AI", domain: "peec.ai", aliases: ["PeecAI", "Peec"] },
+    { name: "Profound", domain: "profound.ai" },
+    { name: "AirOps", domain: "airops.com" },
+    { name: "Frase", domain: "frase.io" },
+    { name: "Semrush", domain: "semrush.com", aliases: ["Semrush AI Toolkit", "Semrush AI Visibility", "Semrush One"] },
+    { name: "Ahrefs", domain: "ahrefs.com" },
+    { name: "AthenaHQ", domain: "athenahq.ai", aliases: ["Athena"] },
+    { name: "Otterly AI", domain: "otterly.ai", aliases: ["OtterlyAI"] },
+    { name: "Scrunch AI", domain: "scrunch.com", aliases: ["ScrunchAI", "Scrunch"] },
+    { name: "Writesonic", domain: "writesonic.com" },
+    { name: "SE Ranking", domain: "seranking.com", aliases: ["SERanking", "SE Visible"] },
+    { name: "Brand24", domain: "brand24.com" },
+    { name: "PromptWatch", domain: "promptwatch.com" },
+    { name: "PromptPulse", domain: "promptpulse.online", aliases: ["Prompt Pulse"] },
+    { name: "Evertune", domain: "evertune.ai" },
+    { name: "LLMClicks", domain: "llmclicks.ai", aliases: ["LLM Clicks"] },
+    { name: "Pranas", domain: "pranas.co" },
+    { name: "OpenForge", domain: "openforge.ai", aliases: ["Open Forge"] },
+    { name: "Topify", domain: "topify.ai" },
+]
+
+function knownBrandInfo(brandName: string) {
+    const key = normalizeBrandKey(brandName)
+    return KNOWN_BRANDS.find(brand =>
+        normalizeBrandKey(brand.name) === key ||
+        (brand.aliases ?? []).some(alias => normalizeBrandKey(alias) === key)
+    ) ?? null
+}
+
 function knownBrandDomain(brandName: string) {
-    const key = brandName.toLowerCase().replace(/[^a-z0-9]/g, "")
-    const domains: Record<string, string> = {
-        peecai: "peec.ai",
-        profound: "profound.ai",
-        frase: "frase.io",
-        semrush: "semrush.com",
-        semrushaitoolkit: "semrush.com",
-        semrushaivisibility: "semrush.com",
-        semrushone: "semrush.com",
-        athenahq: "athenahq.ai",
-        athena: "athenahq.ai",
-        otterlyai: "otterly.ai",
-        scrunchai: "scrunch.com",
-        writesonic: "writesonic.com",
-        seranking: "seranking.com",
-        promptwatch: "promptwatch.com",
-        refractone: "refractone.com",
-        evertune: "evertune.ai",
-        llmclicks: "llmclicks.ai",
-        pranas: "pranas.co",
-        openforge: "openforge.ai",
-        topify: "topify.ai",
-    }
-    return domains[key] ?? null
+    return knownBrandInfo(brandName)?.domain ?? null
+}
+
+function canonicalBrandName(brandName: string) {
+    const trimmed = brandName.trim()
+    return knownBrandInfo(trimmed)?.name ?? trimmed
+}
+
+function normalizeBrandKey(brandName: string) {
+    return brandName.toLowerCase().replace(/[^a-z0-9]/g, "")
 }
 
 function escapeRegExp(value: string) {

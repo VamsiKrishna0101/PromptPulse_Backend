@@ -390,11 +390,11 @@ export async function getCustomEventStats(project_id: string, site_id: string, e
 export function getTrackerScript() {
     return `(() => {
   const script = document.currentScript;
-  const key = script && script.getAttribute("data-geolens-key");
-  const endpoint = (script && script.getAttribute("data-geolens-endpoint")) || "/api/webanalytics";
+  const key = script && script.getAttribute("data-promptpulse-key");
+  const endpoint = (script && script.getAttribute("data-promptpulse-endpoint")) || "/api/webanalytics";
   if (!key) return;
 
-  const visitorKey = "geolens_visitor";
+  const visitorKey = "promptpulse_visitor";
   const visitor = sessionStorage.getItem(visitorKey) || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random());
   sessionStorage.setItem(visitorKey, visitor);
 
@@ -420,7 +420,7 @@ export function getTrackerScript() {
   };
 
   send("/collect", payload());
-  window.geolensAction = (eventId, data = {}) => send("/actions", { public_key: key, visitor_id: visitor, event_id: eventId, ...data });
+  window.promptpulseAction = (eventId, data = {}) => send("/actions", { public_key: key, visitor_id: visitor, event_id: eventId, ...data });
   let lastPath = location.pathname + location.search;
   const trackRoute = () => {
     const nextPath = location.pathname + location.search;

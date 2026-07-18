@@ -12,6 +12,8 @@ export type RunPromptInput = {
         text: string
         url: string
     }[]
+    enqueue_source_enrichment?: boolean
+    ingest_chat?: boolean
 }
 
 export type DashboardDataInput = {

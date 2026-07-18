@@ -11,6 +11,7 @@ import {
     createSubscription,
     getMyPlan,
     getPlanLimits,
+    getPlanQuota,
     handleStripeWebhook,
     refreshPlanUsage,
 } from "./subscription_service"
@@ -58,6 +59,18 @@ export async function getPlanLimitsController(req: Request, res: Response): Prom
         res.status(200).json(limits)
     } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to get plan limits"
+        res.status(500).json({ error: message })
+    }
+}
+
+export async function getPlanQuotaController(req: Request, res: Response): Promise<void> {
+    try {
+        const { user: { id: userId } } = req as AuthenticatedRequest
+        const quota = await getPlanQuota(userId)
+
+        res.status(200).json(quota)
+    } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to get plan quota"
         res.status(500).json({ error: message })
     }
 }

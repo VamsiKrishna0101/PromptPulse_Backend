@@ -9,6 +9,7 @@ import {
 import { discoverPromptCandidates } from './prompt_discovery_service'
 import { assertProjectAccess, assertPromptAccess } from '../projects/project_access'
 import type { AuthenticatedRequest } from '../../middleware/auth'
+import { assertCanCreatePrompts } from '../subscription/subscription_service'
 
 const createTopicSchema = z.object({
     name: z.string().trim().min(2, 'Topic name must be at least 2 characters').max(80, 'Topic name is too long'),
@@ -27,7 +28,8 @@ export const getPromptsController = async (req: Request, res: Response): Promise
             return
         }
 
-        await assertProjectAccess(project_id, (req as AuthenticatedRequest).user.id)
+        const user_id = (req as AuthenticatedRequest).user.id
+        await assertProjectAccess(project_id, user_id)
 
         const status = req.query.status as any
         const topic = req.query.topic as string
@@ -132,6 +134,8 @@ export const createPromptController = async (req: Request, res: Response): Promi
             return
         }
 
+        await assertCanCreatePrompts(user_id, 1)
+
         const prompt = await createPrompt({
             project_id,
             text: parsed.data.text,
@@ -142,6 +146,10 @@ export const createPromptController = async (req: Request, res: Response): Promi
     } catch (error) {
         if (error instanceof Error && error.message === 'PROJECT_NOT_FOUND') {
             res.status(404).json({ error: 'Project not found' })
+            return
+        }
+        if (error instanceof Error && error.message.includes('plan')) {
+            res.status(400).json({ error: error.message })
             return
         }
         res.status(500).json({ error: 'Failed to create prompt' })

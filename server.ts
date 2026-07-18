@@ -1,4 +1,4 @@
-import 'dotenv/config'
+import './src/lib/env'
 import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
@@ -22,8 +22,18 @@ import geoArticleRoutes from './src/features/geoartciles/geoarticle_routes'
 import adminRoutes from './src/features/admin/admin_routes'
 import demoRoutes from './src/features/demo/demo_routes'
 import productTourRoutes from './src/features/product_tour/product_tour_routes'
+import reportRoutes from './src/features/report/report_routes'
+import artifactRoutes from './src/features/artifacts/artifact_routes'
+import actionQueueRoutes from './src/features/action_queue/action_queue_routes'
+import customerSupportAgentRoutes from './src/features/customer_support_agent/customer_support_agent_routes'
+import redditIntelligenceRoutes from './src/features/reddit_intelligence/reddit_intelligence_routes'
+import brandPreferenceRoutes from './src/features/brand_preferences/brand_preferences_routes'
 import { stripeWebhookController } from './src/features/subscription/subscription_controller'
 import { requireAdmin, requireAuth } from './src/middleware/auth'
+
+if (process.env.ENABLE_DAILY_SCRAPE_SCHEDULER === "true") {
+    void import("./src/scheduler/daily_scheduler")
+}
 
 process.on("uncaughtException", error => {
     console.error("Uncaught exception during startup/runtime", error)
@@ -63,6 +73,12 @@ app.use('/api/exports', requireAuth, exportRoutes)
 app.use('/api/opportunities', requireAuth, opportunityRoutes)
 app.use('/api/geoarticles', requireAuth, geoArticleRoutes)
 app.use('/api/product-tour', requireAuth, productTourRoutes)
+app.use('/api/reports', requireAuth, reportRoutes)
+app.use('/api/artifacts', requireAuth, artifactRoutes)
+app.use('/api/action-queue', requireAuth, actionQueueRoutes)
+app.use('/api/customer-support-agent', requireAuth, customerSupportAgentRoutes)
+app.use('/api/reddit-intelligence', requireAuth, redditIntelligenceRoutes)
+app.use('/api/brand-preferences', requireAuth, brandPreferenceRoutes)
 app.use('/api/admin', requireAuth, requireAdmin, adminRoutes)
 app.use('/api/webanalytics', webAnalyticsRoutes)
 app.use('/api/demo', demoRoutes)

@@ -3,6 +3,21 @@ import { embedText, generateText, generateTextStream } from "../llm/gemini_servi
 import { ingestProjectKnowledge } from "../rag/ingestion_service"
 import { searchSaraKnowledge, type QdrantPayload } from "../rag/qdrant_service"
 import prisma from "../../lib/prisma"
+import { buildSaraContextPacket, type SaraContextPacket } from "./context/sara_context_service"
+
+type SaraDebugTrace = {
+    internal_mcp: {
+        used: boolean
+        tool_names: string[]
+        section_titles: string[]
+    }
+    rag: {
+        used: boolean
+        result_count: number
+        document_types: string[]
+        top_titles: string[]
+    }
+}
 
 export async function reindexSaraProject(project_id: string, options?: {
     chat_limit?: number
@@ -42,7 +57,8 @@ export async function chatWithSara(input: {
         ;(error as Error & { details?: unknown }).details = readiness
         throw error
     }
-    const scope = await getSaraProjectScope(input.project_id)
+    const contextPacket = await buildSaraContextPacket(input)
+    const scope = toSaraProjectScope(contextPacket)
 
     const conversation = await getOrCreateConversation({
         conversation_id: input.conversation_id,
@@ -65,14 +81,22 @@ export async function chatWithSara(input: {
     })
 
     const evidence = [
+        "Premium live facts packet:",
+        contextPacket.text,
+        "Retrieved RAG evidence:",
         formatSaraScope(scope),
         results.map((result, index) => formatEvidence(index + 1, result.payload ?? {})).join("\n\n")
     ].filter(Boolean).join("\n\n")
+    const debugTrace = buildSaraDebugTrace(contextPacket, results)
+    logSaraDebug(input.project_id, input.message, debugTrace)
     const history = recentMessages
         .reverse()
         .map(message => `${message.role}: ${message.content}`)
         .join("\n")
-    const raw = await generateText(buildSaraSystemPrompt(), buildSaraUserPrompt(input.message, evidence, history, input.page_context, scope))
+    const raw = await generateText(
+        buildSaraSystemPrompt(contextPacket),
+        buildSaraUserPrompt(input.message, evidence, history, input.page_context, scope, contextPacket)
+    )
     const parsed = parseSaraJson(raw)
     const retrievedContext = results.map(result => ({
         score: result.score,
@@ -108,6 +132,7 @@ export async function chatWithSara(input: {
         conversation_id: conversation.id,
         message_id: assistantMessage.id,
         ...parsed,
+        debug: debugTrace,
         retrieved_context: results.map(result => ({
             score: result.score,
             payload: result.payload
@@ -131,7 +156,8 @@ export async function chatWithSaraStream(input: {
         ;(error as Error & { details?: unknown }).details = readiness
         throw error
     }
-    const scope = await getSaraProjectScope(input.project_id)
+    const contextPacket = await buildSaraContextPacket(input)
+    const scope = toSaraProjectScope(contextPacket)
 
     const conversation = await getOrCreateConversation({
         conversation_id: input.conversation_id,
@@ -154,9 +180,14 @@ export async function chatWithSaraStream(input: {
     })
 
     const evidence = [
+        "Premium live facts packet:",
+        contextPacket.text,
+        "Retrieved RAG evidence:",
         formatSaraScope(scope),
         results.map((result, index) => formatEvidence(index + 1, result.payload ?? {})).join("\n\n")
     ].filter(Boolean).join("\n\n")
+    const debugTrace = buildSaraDebugTrace(contextPacket, results)
+    logSaraDebug(input.project_id, input.message, debugTrace)
     const history = recentMessages
         .reverse()
         .map(message => `${message.role}: ${message.content}`)
@@ -177,8 +208,8 @@ export async function chatWithSaraStream(input: {
     input.onReady?.({ conversation_id: conversation.id })
 
     const answer = await generateTextStream(
-        buildSaraStreamingSystemPrompt(),
-        buildSaraStreamingUserPrompt(input.message, evidence, history, input.page_context, scope),
+        buildSaraStreamingSystemPrompt(contextPacket),
+        buildSaraStreamingUserPrompt(input.message, evidence, history, input.page_context, scope, contextPacket),
         input.onToken
     )
 
@@ -206,6 +237,7 @@ export async function chatWithSaraStream(input: {
         citations: buildStreamingCitations(results),
         suggested_actions: [],
         confidence: results.length > 0 ? "medium" as const : "low" as const,
+        debug: debugTrace,
         retrieved_context: results.map(result => ({
             score: result.score,
             payload: result.payload
@@ -228,13 +260,13 @@ export async function getSaraReadiness(project_id: string) {
         : 0
 
     return {
-        is_ready: days_available >= 7,
+        is_ready: days_available >= 1,
         days_available,
-        required_days: 7,
+        required_days: 1,
         total_chats: aggregate._count._all,
         first_chat_at: first,
         last_chat_at: last,
-        recommendations: days_available >= 7 ? buildInitialRecommendations() : []
+        recommendations: days_available >= 1 ? buildInitialRecommendations() : []
     }
 }
 
@@ -307,26 +339,39 @@ async function getOrCreateConversation(input: {
     })
 }
 
-function buildSaraSystemPrompt() {
+function buildSaraSystemPrompt(context: SaraContextPacket) {
     return [
         "You are Sara, an AI brand visibility consultant.",
         "Write like an enterprise product analyst: concise, specific, and calm.",
         "Keep the answer to 2 short paragraphs unless the user explicitly asks for a detailed plan.",
         "Avoid generic marketing advice and avoid repeating the user's dashboard numbers unless they answer the question.",
-        "Answer only from the supplied project evidence.",
+        "Never upsell, mention upgrading, or describe locked features unless the user asks about billing, limits, upgrades, or is blocked by a plan limit.",
+        "Never claim the user is on a free tier, lacks URL-level reporting, or has a feature limitation unless the live plan packet explicitly says that exact limit is blocking the request.",
+        "If URL-level source details are not present in the supplied evidence, say the current packet has domain-level source data and ask the user to open Sources for URL-level rows; do not blame the plan.",
+        "If the user asks what you can do, answer as a PromptPulse in-product analyst: dashboard summaries, prompt diagnosis, competitor comparison, source gaps, action queue, reports, and next steps.",
+        "If the user asks for a table, tabular format, comparison, dashboard summary, or beautiful summary, put a markdown table first, then add 2-3 concise bullets.",
+        "Markdown table rule: every table row must be on its own line, with a blank line before and after the table. Never compress a table into one paragraph.",
+        "For rank/position metrics, lower numbers are better. Say '#2.4 is stronger than #3.3' rather than calling 3.3 higher/better.",
+        "For today's dashboard questions, summarize visibility, average position, sentiment, responses analyzed, weak prompt areas, competitor signals, source gaps, and next actions.",
+        "Use the Premium live facts packet first for dashboard, plan, usage, run status, source, competitor, and action queue questions.",
+        "Use retrieved RAG evidence as supporting evidence for specific chats, prompts, sources, and historical details.",
+        "Answer only from the supplied project evidence and live facts packet.",
         "Treat only the project's tracked competitor list as competitors. Other brands mentioned in scraped AI answers are evidence only, not competitors, unless they are in that tracked list.",
         "If the evidence is insufficient, say what is missing instead of inventing facts.",
+        `Current Sara mode: ${context.plan.sara_level} for ${context.plan.plan}.`,
+        `Plan-specific behavior: ${context.plan.guidance}`,
         "Return strict JSON with keys: answer, citations, suggested_actions, confidence.",
         "citations must reference evidence numbers from the context, like E1 or E2.",
         "suggested_actions should contain 0 to 2 short action labels only, not full sentences, and only when they add value."
     ].join("\n")
 }
 
-function buildSaraUserPrompt(message: string, evidence: string, history: string, pageContext?: string, scope?: SaraProjectScope) {
+function buildSaraUserPrompt(message: string, evidence: string, history: string, pageContext?: string, scope?: SaraProjectScope, context?: SaraContextPacket) {
     return [
         pageContext ? `Current product area: ${pageContext}` : "",
         scope ? `Brand: ${scope.brand_name}` : "",
         scope ? `Tracked competitors: ${scope.tracked_competitors.join(", ") || "None configured"}` : "",
+        context ? `Sara mode: ${context.plan.sara_level} (${context.plan.plan})` : "",
         history ? `Recent conversation:\n${history}` : "",
         "",
         `User question: ${message}`,
@@ -344,24 +389,37 @@ function buildSaraUserPrompt(message: string, evidence: string, history: string,
     ].join("\n")
 }
 
-function buildSaraStreamingSystemPrompt() {
+function buildSaraStreamingSystemPrompt(context: SaraContextPacket) {
     return [
         "You are Sara, an AI brand visibility consultant.",
         "Write like an enterprise product analyst: concise, specific, and calm.",
-        "Answer in plain text only. Do not return JSON, markdown tables, or headings unless the user asks for a plan.",
+        "Answer in plain text or markdown when it improves clarity. Do not return JSON in streaming mode.",
         "Keep the answer to 2 short paragraphs unless the user explicitly asks for detail.",
         "Avoid generic marketing advice and avoid repeating dashboard numbers unless they answer the question.",
-        "Answer only from the supplied project evidence.",
+        "Never upsell, mention upgrading, or describe locked features unless the user asks about billing, limits, upgrades, or is blocked by a plan limit.",
+        "Never claim the user is on a free tier, lacks URL-level reporting, or has a feature limitation unless the live plan packet explicitly says that exact limit is blocking the request.",
+        "If URL-level source details are not present in the supplied evidence, say the current packet has domain-level source data and ask the user to open Sources for URL-level rows; do not blame the plan.",
+        "If the user asks what you can do, answer as a PromptPulse in-product analyst: dashboard summaries, prompt diagnosis, competitor comparison, source gaps, action queue, reports, and next steps.",
+        "If the user asks for a table, tabular format, comparison, dashboard summary, or beautiful summary, put a markdown table first, then add 2-3 concise bullets.",
+        "Markdown table rule: every table row must be on its own line, with a blank line before and after the table. Never compress a table into one paragraph.",
+        "For rank/position metrics, lower numbers are better. Say '#2.4 is stronger than #3.3' rather than calling 3.3 higher/better.",
+        "For today's dashboard questions, summarize visibility, average position, sentiment, responses analyzed, weak prompt areas, competitor signals, source gaps, and next actions.",
+        "Use the Premium live facts packet first for dashboard, plan, usage, run status, source, competitor, and action queue questions.",
+        "Use retrieved RAG evidence as supporting evidence for specific chats, prompts, sources, and historical details.",
+        "Answer only from the supplied project evidence and live facts packet.",
         "Treat only the project's tracked competitor list as competitors. Other brands mentioned in scraped AI answers are evidence only, not competitors, unless they are in that tracked list.",
-        "If the evidence is insufficient, say what is missing instead of inventing facts."
+        "If the evidence is insufficient, say what is missing instead of inventing facts.",
+        `Current Sara mode: ${context.plan.sara_level} for ${context.plan.plan}.`,
+        `Plan-specific behavior: ${context.plan.guidance}`
     ].join("\n")
 }
 
-function buildSaraStreamingUserPrompt(message: string, evidence: string, history: string, pageContext?: string, scope?: SaraProjectScope) {
+function buildSaraStreamingUserPrompt(message: string, evidence: string, history: string, pageContext?: string, scope?: SaraProjectScope, context?: SaraContextPacket) {
     return [
         pageContext ? `Current product area: ${pageContext}` : "",
         scope ? `Brand: ${scope.brand_name}` : "",
         scope ? `Tracked competitors: ${scope.tracked_competitors.join(", ") || "None configured"}` : "",
+        context ? `Sara mode: ${context.plan.sara_level} (${context.plan.plan})` : "",
         history ? `Recent conversation:\n${history}` : "",
         "",
         `User question: ${message}`,
@@ -377,8 +435,49 @@ function buildStreamingCitations(results: Awaited<ReturnType<typeof searchSaraPr
         return {
             evidence_id: `E${index + 1}`,
             title: readPayloadString(payload.title) || readPayloadString(payload.source_entity) || "Project evidence",
-            reason: readPayloadString(payload.document_type) || "Relevant Sara knowledge"
+            reason: friendlyEvidenceReason(readPayloadString(payload.document_type))
         }
+    })
+}
+
+function buildSaraDebugTrace(
+    contextPacket: SaraContextPacket,
+    results: Awaited<ReturnType<typeof searchSaraProject>>
+): SaraDebugTrace {
+    const documentTypes = new Set<string>()
+    const topTitles: string[] = []
+
+    for (const result of results) {
+        const payload = result.payload ?? {}
+        const documentType = readPayloadString(payload.document_type)
+        const title = readPayloadString(payload.title) || readPayloadString(payload.source_entity)
+        if (documentType) documentTypes.add(documentType)
+        if (title && topTitles.length < 5) topTitles.push(title)
+    }
+
+    return {
+        internal_mcp: {
+            used: true,
+            tool_names: contextPacket.debug.tool_names,
+            section_titles: contextPacket.debug.section_titles,
+        },
+        rag: {
+            used: results.length > 0,
+            result_count: results.length,
+            document_types: Array.from(documentTypes),
+            top_titles: topTitles,
+        },
+    }
+}
+
+function logSaraDebug(projectId: string, message: string, debug: SaraDebugTrace) {
+    console.info("[sara-debug]", {
+        project_id: projectId,
+        question: message.slice(0, 120),
+        internal_mcp_tools: debug.internal_mcp.tool_names,
+        rag_results: debug.rag.result_count,
+        rag_document_types: debug.rag.document_types,
+        rag_top_titles: debug.rag.top_titles,
     })
 }
 
@@ -401,11 +500,19 @@ function parseSaraJson(raw: string) {
         .trim()
 
     try {
-        return JSON.parse(cleaned) as {
+        const parsed = JSON.parse(cleaned) as {
             answer: string
             citations: { evidence_id: string; title: string; reason: string }[]
             suggested_actions: string[]
             confidence: "low" | "medium" | "high"
+        }
+
+        return {
+            ...parsed,
+            citations: (parsed.citations ?? []).map(citation => ({
+                ...citation,
+                reason: friendlyEvidenceReason(citation.reason)
+            }))
         }
     } catch {
         return {
@@ -421,21 +528,20 @@ function readPayloadString(value: unknown) {
     return typeof value === "string" ? value : ""
 }
 
+function friendlyEvidenceReason(documentType: string) {
+    const labels: Record<string, string> = {
+        project_profile: "Project profile",
+        prompt_definition: "Prompt evidence",
+        chat_response: "AI response evidence",
+        source_content: "Source evidence",
+        project_summary_snapshot: "Dashboard summary",
+    }
+    return labels[documentType] ?? (documentType || "Relevant Sara knowledge")
+}
+
 type SaraProjectScope = {
     brand_name: string
     tracked_competitors: string[]
-}
-
-async function getSaraProjectScope(project_id: string): Promise<SaraProjectScope> {
-    const project = await prisma.project.findUniqueOrThrow({
-        where: { id: project_id },
-        include: { competitors: { select: { name: true } } }
-    })
-
-    return {
-        brand_name: project.brand_name,
-        tracked_competitors: project.competitors.map(competitor => competitor.name)
-    }
 }
 
 function formatSaraScope(scope: SaraProjectScope) {
@@ -445,6 +551,13 @@ function formatSaraScope(scope: SaraProjectScope) {
         `Tracked competitors: ${scope.tracked_competitors.join(", ") || "None configured"}`,
         "Important: Only these tracked competitors should be treated as competitors in Sara's answer."
     ].join("\n")
+}
+
+function toSaraProjectScope(context: SaraContextPacket): SaraProjectScope {
+    return {
+        brand_name: context.project.brand_name,
+        tracked_competitors: context.project.tracked_competitors
+    }
 }
 
 function makeConversationTitle(message: string) {

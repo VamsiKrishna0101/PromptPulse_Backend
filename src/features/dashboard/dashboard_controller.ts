@@ -114,7 +114,7 @@ export const getChatsPageController = async (req: Request, res: Response): Promi
         await assertProjectAccess(project_id, (req as any).user.id)
         const filters = parseFilters(req.query)
         const page = Number.parseInt(req.query.page as string, 10) || 1
-        const pageSize = Number.parseInt(req.query.page_size as string, 10) || 20
+        const pageSize = Number.parseInt(req.query.page_size as string, 10) || 10
         const data = await getChatsPage(project_id, filters, page, pageSize)
         res.status(200).json(data)
     } catch (error) {

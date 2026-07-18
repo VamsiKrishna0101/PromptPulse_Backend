@@ -13,7 +13,7 @@ type AccessTokenPayload = {
     sub?: string
 }
 
-export function requireAuth(req: Request, res: Response, next: NextFunction): void {
+export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
     const header = req.headers.authorization
 
     if (!header?.startsWith("Bearer ")) {
@@ -30,9 +30,24 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
             return
         }
 
-        ;(req as AuthenticatedRequest).user = { id: payload.sub }
+        const user = await prisma.user.findUnique({
+            where: { id: payload.sub },
+            select: { id: true, role: true, is_verified: true },
+        })
+
+        if (!user) {
+            res.status(401).json({ error: "Invalid user" })
+            return
+        }
+
+        if (!user.is_verified) {
+            res.status(403).json({ error: "Please verify your email before continuing" })
+            return
+        }
+
+        ;(req as AuthenticatedRequest).user = { id: user.id, role: user.role }
         next()
-    } catch {
+    } catch (error) {
         res.status(401).json({ error: "Invalid or expired authorization token" })
     }
 }

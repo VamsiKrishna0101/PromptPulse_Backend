@@ -76,7 +76,7 @@ export const createProjectController = async (req: Request, res: Response): Prom
         res.status(201).json(project)
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to create project'
-        const status = message.includes('plan can track up to') || message.includes('Missing required')
+        const status = message.includes('plan') || message.includes('Missing required') || message.includes('supported primary market')
             ? 400
             : 500
         res.status(status).json({ error: message })

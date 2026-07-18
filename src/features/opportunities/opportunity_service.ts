@@ -1,6 +1,6 @@
 import prisma from "../../lib/prisma"
 import { buildChatWhere, type DashboardFilters } from "../dashboard/dashboard_service"
-import type { ContentGapPlan, OpportunityEffort, OpportunityImpact, OpportunityItem, OpportunitySource, OpportunityType, OpportunitiesResponse } from "./opportunity_types"
+import type { ContentGapPlan, OpportunityConfidence, OpportunityEffort, OpportunityImpact, OpportunityItem, OpportunitySource, OpportunityType, OpportunitiesResponse } from "./opportunity_types"
 
 type ChatWithEvidence = Awaited<ReturnType<typeof loadOpportunityChats>>[number]
 
@@ -22,6 +22,13 @@ function impactLabel(score: number): OpportunityImpact {
     return "LOW"
 }
 
+function capImpactForConfidence(score: number, confidence: OpportunityConfidence) {
+    if (confidence === "NEEDS_REVIEW") return Math.min(score, 34)
+    if (confidence === "LOW") return Math.min(score, 41)
+    if (confidence === "MEDIUM") return Math.min(score, 78)
+    return score
+}
+
 function effortFor(type: OpportunityType, sourceCount: number): OpportunityEffort {
     if (type === "MISSING") return "LOW"
     if (type === "SOURCE_GAP" && sourceCount > 2) return "HIGH"
@@ -34,6 +41,45 @@ function opportunityTitle(type: OpportunityType, competitor: string) {
     if (type === "OUTRANKED") return `${competitor} is ranking ahead`
     if (type === "SOURCE_GAP") return `Source gap behind ${competitor}`
     return `${competitor} has stronger sentiment`
+}
+
+function isNoisySearchResult(rawResponse: string | null) {
+    if (!rawResponse) return false
+    const text = rawResponse.toLowerCase()
+    const signals = [
+        /\b(videos?|youtube|people also ask|related searches|search results?|sponsored|key moments)\b/.test(text),
+        /\b(view all|more results|results for|site links?)\b/.test(text),
+        /(?:https?:\/\/|www\.)\S+/.test(text),
+        /[a-z0-9-]+\.(com|ai|io|co|org|net|in)\s*[>\u203a]/i.test(rawResponse),
+        (rawResponse.match(/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+\d{1,2},\s+\d{4}\b/gi) ?? []).length >= 2,
+        (rawResponse.match(/\b(?:google|youtube|linkedin|reddit|g2|capterra)\.[a-z.]+\b/gi) ?? []).length >= 2,
+    ]
+    return signals.filter(Boolean).length >= 2
+}
+
+function hasCompetitorMention(chat: ChatWithEvidence, competitorName: string) {
+    return chat.brand_mentions.some(mention => mention.brand_name.toLowerCase() === competitorName.toLowerCase())
+}
+
+function promptIntentWarning(promptText: string) {
+    const text = promptText.toLowerCase()
+    if (!/\bgeo\b/.test(text)) return null
+
+    const aiIntent = /\b(ai visibility|generative engine|answer engine|llm|chatgpt|perplexity|ai search|ai overview|prompt)\b/.test(text)
+    const geospatialIntent = /\b(gis|geospatial|map|maps|mapping|location intelligence|spatial|coordinates|wgs84)\b/.test(text)
+
+    if (!aiIntent && !geospatialIntent) {
+        return "Prompt intent is ambiguous: GEO could mean generative engine optimization or geospatial software."
+    }
+    if (aiIntent && geospatialIntent) {
+        return "Prompt mixes AI visibility and geospatial language, so review the raw answer before creating competitor-specific content."
+    }
+    return null
+}
+
+function isLowSignalDomain(domain: string) {
+    const normalized = domain.toLowerCase().replace(/^www\./, "")
+    return /^google\./.test(normalized) || ["youtube.com", "youtu.be"].includes(normalized)
 }
 
 function inferContentType(promptText: string, type: OpportunityType) {
@@ -69,13 +115,16 @@ function missingAngles(input: {
     type: OpportunityType
     competitorName: string
     sources: OpportunitySource[]
+    canUseCompetitor: boolean
+    promptWarning: string | null
 }) {
     const sourceDomains = input.sources.slice(0, 2).map(source => source.domain)
     const angles = new Set<string>()
 
     if (input.type === "MISSING") {
         angles.add("Direct answer to the prompt intent")
-        angles.add(`Why buyers compare you with ${input.competitorName}`)
+        if (input.canUseCompetitor) angles.add(`Why buyers compare you with ${input.competitorName}`)
+        else angles.add("Buyer criteria: pricing, features, use cases, and proof")
     }
     if (input.type === "OUTRANKED") {
         angles.add("Clearer comparison proof")
@@ -89,6 +138,7 @@ function missingAngles(input: {
         angles.add("Trust proof, reviews, outcomes, and customer evidence")
     }
 
+    if (input.promptWarning) angles.add("Clarified prompt intent before writing")
     angles.add("Short FAQ answers for AI snippets")
     return Array.from(angles).slice(0, 4)
 }
@@ -115,20 +165,30 @@ function buildContentGapPlan(input: {
     competitorVisibility: number
     sources: OpportunitySource[]
     impactScore: number
+    confidence: OpportunityConfidence
+    confidenceReasons: string[]
+    cleanEvidenceCount: number
+    promptWarning: string | null
 }): ContentGapPlan {
     const action = contentAction(input.type)
     const contentType = inferContentType(input.promptText, input.type)
     const sourceLabel = input.sources.length ? ` Sources like ${input.sources.slice(0, 2).map(source => source.domain).join(" and ")} are reinforcing competitor answers.` : ""
+    const canUseCompetitor = input.confidence === "HIGH" || (input.confidence === "MEDIUM" && input.cleanEvidenceCount >= 2)
+    const gapReason = input.promptWarning
+        ? `${input.promptWarning} Treat this as a review item before writing competitor-specific copy.`
+        : input.cleanEvidenceCount === 0
+            ? `Detected competitor visibility is based on low-confidence answer evidence. Review the raw chats before acting.`
+            : input.type === "MISSING"
+                ? `${input.competitorName} appears for this intent while ${input.brandName} is missing or weak.`
+                : `${input.competitorName} has stronger AI-answer evidence for this intent.${sourceLabel}`
 
     return {
-        gap_reason: input.type === "MISSING"
-            ? `${input.competitorName} appears for this intent while ${input.brandName} is missing or weak.`
-            : `${input.competitorName} has stronger AI-answer evidence for this intent.${sourceLabel}`,
+        gap_reason: gapReason,
         recommended_content_type: contentType,
         suggested_title: suggestedTitle(input.promptText, input.brandName, input.type),
         action,
-        priority_reason: `Impact score ${input.impactScore}; competitor visibility ${rounded(input.competitorVisibility)}% vs your ${rounded(input.ownVisibility)}%.`,
-        missing_angles: missingAngles({ type: input.type, competitorName: input.competitorName, sources: input.sources }),
+        priority_reason: `Impact score ${input.impactScore}; confidence ${input.confidence.toLowerCase()}; competitor visibility ${rounded(input.competitorVisibility)}% vs your ${rounded(input.ownVisibility)}%.`,
+        missing_angles: missingAngles({ type: input.type, competitorName: input.competitorName, sources: input.sources, canUseCompetitor, promptWarning: input.promptWarning }),
         optimization_focus: optimizationFocus(input.type),
     }
 }
@@ -161,17 +221,32 @@ function opportunityDescription(input: {
     return `${input.competitorName} is visible in ${competitorVisibility}% of matching answers while your brand appears in ${ownVisibility}%.`
 }
 
-function nextStep(type: OpportunityType, competitor: string, sources: OpportunitySource[]) {
-    if (type === "SOURCE_GAP" && sources.length) {
-        return `Prioritize ${sources.slice(0, 2).map(source => source.domain).join(" and ")} with comparison, category, or editorial proof for this prompt.`
+function nextStep(input: {
+    type: OpportunityType
+    competitor: string
+    sources: OpportunitySource[]
+    confidence: OpportunityConfidence
+    cleanEvidenceCount: number
+    promptWarning: string | null
+}) {
+    const canUseCompetitor = input.confidence === "HIGH" || (input.confidence === "MEDIUM" && input.cleanEvidenceCount >= 2)
+
+    if (input.promptWarning) {
+        return "Clarify whether this prompt means AI visibility/GEO or geospatial SaaS before creating content. If targeting AI visibility, create a focused best-tools page with pricing/value, supported engines, FAQs, and credible citations."
     }
-    if (type === "MISSING") {
-        return `Create or refresh a page that directly answers this prompt, then make sure ${competitor} comparison language is covered honestly.`
+    if (input.cleanEvidenceCount === 0) {
+        return "Review the raw answers first. If the competitor mention is valid, create a focused page that answers the prompt with buyer criteria, pricing/value, proof, FAQs, and credible citations."
     }
-    if (type === "OUTRANKED") {
-        return `Strengthen the prompt intent with clearer positioning, proof points, and comparison copy against ${competitor}.`
+    if (input.type === "SOURCE_GAP" && input.sources.length) {
+        return `Prioritize ${input.sources.slice(0, 2).map(source => source.domain).join(" and ")} with comparison, category, or editorial proof for this prompt.`
     }
-    return `Improve trust signals and messaging around this prompt so AI answers describe your brand more favorably.`
+    if (input.type === "MISSING" && canUseCompetitor) {
+        return `Create or refresh a page that directly answers this prompt, then make sure ${input.competitor} comparison language is covered honestly.`
+    }
+    if (input.type === "OUTRANKED" && canUseCompetitor) {
+        return `Strengthen the prompt intent with clearer positioning, proof points, and comparison copy against ${input.competitor}.`
+    }
+    return "Create or refresh a focused page that directly answers this prompt, covers buyer criteria, pricing/value, use cases, proof, FAQs, and cites credible sources."
 }
 
 async function loadOpportunityChats(project_id: string, filters: DashboardFilters) {
@@ -205,16 +280,49 @@ async function loadOpportunityChats(project_id: string, filters: DashboardFilter
     })
 }
 
-function sourceEvidence(chats: ChatWithEvidence[], competitorName: string): OpportunitySource[] {
+function cleanCompetitorChats(chats: ChatWithEvidence[], competitorName: string) {
+    return chats.filter(chat => hasCompetitorMention(chat, competitorName) && !isNoisySearchResult(chat.raw_response))
+}
+
+function confidenceForOpportunity(input: {
+    promptWarning: string | null
+    totalChats: number
+    cleanEvidenceCount: number
+    evidenceCount: number
+    sourceCount: number
+    noisyEvidenceCount: number
+}) {
+    const reasons: string[] = []
+    let confidence: OpportunityConfidence = "HIGH"
+
+    if (input.promptWarning) reasons.push(input.promptWarning)
+    if (input.cleanEvidenceCount === 0) reasons.push("Competitor appears only in noisy or low-confidence answer evidence.")
+    if (input.noisyEvidenceCount > 0) reasons.push(`${input.noisyEvidenceCount} answer${input.noisyEvidenceCount === 1 ? "" : "s"} look like search-result scrape noise.`)
+    if (input.sourceCount === 0) reasons.push("No clean cited source pattern supports this competitor gap yet.")
+    if (input.evidenceCount < 2) reasons.push("Only one matching answer supports this opportunity.")
+
+    if (input.promptWarning || input.cleanEvidenceCount === 0) confidence = "NEEDS_REVIEW"
+    else if (input.cleanEvidenceCount === 1 || input.evidenceCount < 3 || input.sourceCount === 0) confidence = "LOW"
+    else if (input.cleanEvidenceCount < Math.max(2, Math.ceil(input.totalChats * 0.4))) confidence = "MEDIUM"
+
+    return {
+        confidence,
+        reasons: reasons.slice(0, 3),
+    }
+}
+
+function sourceEvidence(chats: ChatWithEvidence[], competitorName: string, cleanOnly = false): OpportunitySource[] {
     const domainMap = new Map<string, OpportunitySource>()
 
     for (const chat of chats) {
-        const competitorWasMentioned = chat.brand_mentions.some(mention => mention.brand_name.toLowerCase() === competitorName.toLowerCase())
+        const competitorWasMentioned = hasCompetitorMention(chat, competitorName)
         if (!competitorWasMentioned) continue
+        if (cleanOnly && isNoisySearchResult(chat.raw_response)) continue
 
         const uniqueDomains = new Set<string>()
         for (const source of chat.sources) {
             if (!source.domain || uniqueDomains.has(source.domain)) continue
+            if (cleanOnly && isLowSignalDomain(source.domain)) continue
             uniqueDomains.add(source.domain)
             const existing = domainMap.get(source.domain)
             domainMap.set(source.domain, {
@@ -245,15 +353,27 @@ function buildOpportunity(input: {
     competitorSentiment: number | null
     totalChats: number
 }): OpportunityItem {
-    const sources = sourceEvidence(input.promptChats, input.competitorName)
+    const sources = sourceEvidence(input.promptChats, input.competitorName, true)
+    const cleanChats = cleanCompetitorChats(input.promptChats, input.competitorName)
+    const noisyEvidenceCount = input.promptChats.filter(chat => hasCompetitorMention(chat, input.competitorName) && isNoisySearchResult(chat.raw_response)).length
+    const promptWarning = promptIntentWarning(input.prompt.text)
+    const confidenceResult = confidenceForOpportunity({
+        promptWarning,
+        totalChats: input.totalChats,
+        cleanEvidenceCount: cleanChats.length,
+        evidenceCount: input.totalChats,
+        sourceCount: sources.length,
+        noisyEvidenceCount,
+    })
     const visibilityGap = Math.max(0, input.competitorVisibility - input.ownVisibility)
     const rankGap = input.ownPosition && input.competitorPosition ? Math.max(0, input.ownPosition - input.competitorPosition) * 8 : 0
     const sentimentGap = input.ownSentiment && input.competitorSentiment ? Math.max(0, input.competitorSentiment - input.ownSentiment) * 0.4 : 0
     const evidenceBoost = Math.min(16, input.totalChats * 3)
-    const impactScore = Math.min(100, Math.round(visibilityGap * 1.15 + rankGap + sentimentGap + evidenceBoost + sources.length * 3))
+    const rawImpactScore = Math.min(100, Math.round(visibilityGap * 1.15 + rankGap + sentimentGap + evidenceBoost + sources.length * 3))
+    const impactScore = capImpactForConfidence(rawImpactScore, confidenceResult.confidence)
     const effort = effortFor(input.type, sources.length)
     const sample = input.promptChats.find(chat =>
-        chat.brand_mentions.some(mention => mention.brand_name.toLowerCase() === input.competitorName.toLowerCase())
+        hasCompetitorMention(chat, input.competitorName)
     )?.raw_response
 
     return {
@@ -275,6 +395,10 @@ function buildOpportunity(input: {
         impact: impactLabel(impactScore),
         effort,
         evidence_count: input.totalChats,
+        clean_evidence_count: cleanChats.length,
+        confidence: confidenceResult.confidence,
+        confidence_reasons: confidenceResult.reasons,
+        prompt_intent_warning: promptWarning,
         top_sources: sources,
         content_gap: buildContentGapPlan({
             type: input.type,
@@ -285,8 +409,19 @@ function buildOpportunity(input: {
             competitorVisibility: input.competitorVisibility,
             sources,
             impactScore,
+            confidence: confidenceResult.confidence,
+            confidenceReasons: confidenceResult.reasons,
+            cleanEvidenceCount: cleanChats.length,
+            promptWarning,
         }),
-        next_step: nextStep(input.type, input.competitorName, sources),
+        next_step: nextStep({
+            type: input.type,
+            competitor: input.competitorName,
+            sources,
+            confidence: confidenceResult.confidence,
+            cleanEvidenceCount: cleanChats.length,
+            promptWarning,
+        }),
         sample_response: sample ? cleanText(sample, 320) : null,
     }
 }
@@ -347,7 +482,7 @@ export async function getOpportunities(project_id: string, filters: DashboardFil
             const competitorVisibility = (competitor.count / total) * 100
             const competitorPosition = avg(competitor.positions)
             const competitorSentiment = avg(competitor.sentiments)
-            const sourceCount = sourceEvidence(promptChats, competitorName).length
+            const sourceCount = sourceEvidence(promptChats, competitorName, true).length
             const visibilityGap = competitorVisibility - ownVisibility
             const rankGap = ownPosition !== null && competitorPosition !== null ? ownPosition - competitorPosition : 0
             const sentimentGap = ownSentiment !== null && competitorSentiment !== null ? competitorSentiment - ownSentiment : 0

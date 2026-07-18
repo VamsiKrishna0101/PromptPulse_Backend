@@ -6,13 +6,16 @@ import type {
     CreateSubscriptionResponse,
     LimitCheckResponse,
     MyPlanResponse,
+    PlanQuotaResponse,
     PaidPlan,
     PlanLimits,
     SubscriptionLimitFeature,
 } from "./subscription_types"
+import { getAccessPeriod, getEffectivePlanAccess } from "./entitlements"
+import { getCreditBalance } from "../credits/credits_service"
 
 let stripeClient: Stripe | null = null
-const TRIAL_DAYS = 7
+const TRIAL_DAYS = 14
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 
 function getStripeClient(): Stripe {
@@ -29,15 +32,15 @@ function getStripeClient(): Stripe {
 
 const PLAN_CONFIG: Record<PaidPlan, { amount_cents: number; price_env_key: string }> = {
     STARTER: {
-        amount_cents: 1900,
+        amount_cents: 2900,
         price_env_key: "STRIPE_STARTER_PRICE_ID",
     },
     GROWTH: {
-        amount_cents: 3900,
+        amount_cents: 5900,
         price_env_key: "STRIPE_GROWTH_PRICE_ID",
     },
     PRO: {
-        amount_cents: 9900,
+        amount_cents: 12900,
         price_env_key: "STRIPE_PRO_PRICE_ID",
     },
 }
@@ -47,41 +50,6 @@ const ACCESS_STATUSES: SubscriptionStatus[] = [
     SubscriptionStatus.TRIALING,
     SubscriptionStatus.PAST_DUE,
 ]
-
-export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
-    FREE: {
-        projects: 0,
-        prompts: 0,
-        competitors: 0,
-        refreshes_per_week: 0,
-        sara: "none",
-        exports: "none",
-    },
-    STARTER: {
-        projects: 1,
-        prompts: 20,
-        competitors: 3,
-        refreshes_per_week: 2,
-        sara: "none",
-        exports: "none",
-    },
-    GROWTH: {
-        projects: 2,
-        prompts: 50,
-        competitors: 6,
-        refreshes_per_week: "daily",
-        sara: "full",
-        exports: "basic",
-    },
-    PRO: {
-        projects: 5,
-        prompts: 125,
-        competitors: 15,
-        refreshes_per_week: "daily",
-        sara: "advanced",
-        exports: "full",
-    },
-}
 
 function assertPaidPlan(plan: unknown): asserts plan is PaidPlan {
     if (plan !== Plan.STARTER && plan !== Plan.GROWTH && plan !== Plan.PRO) {
@@ -134,23 +102,44 @@ function buildCheck(
     return { feature, plan, limit, used, allowed, reason }
 }
 
-async function getCurrentPeriod(userId: string): Promise<{ start: Date; end: Date }> {
-    const subscription = await prisma.subscription.findFirst({
-        where: {
-            user_id: userId,
-            status: {
-                in: ACCESS_STATUSES,
-            },
-        },
-        orderBy: { created_at: "desc" },
-        select: { current_period_start: true, current_period_end: true },
-    })
+function remaining(limit: number | "unlimited", used: number) {
+    if (limit === "unlimited") return "unlimited"
+    return Math.max(0, limit - used)
+}
 
+function remainingNumber(limit: number, used: number) {
+    return Math.max(0, limit - used)
+}
+
+function isWithinLimit(limit: number | "unlimited", used: number) {
+    return limit === "unlimited" || used < limit
+}
+
+function formatLimit(limit: number | "unlimited") {
+    return limit === "unlimited" ? "unlimited" : String(limit)
+}
+
+function startOfToday() {
     const now = new Date()
-    const start = subscription?.current_period_start ?? new Date(now.getFullYear(), now.getMonth(), 1)
-    const end = subscription?.current_period_end ?? new Date(now.getFullYear(), now.getMonth() + 1, 1)
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate())
+}
 
-    return { start, end }
+async function getLiveUsageCounts(userId: string) {
+    const [projectCount, promptCount, competitorCount] = await Promise.all([
+        prisma.project.count({ where: { user_id: userId } }),
+        prisma.prompt.count({ where: { project: { user_id: userId } } }),
+        prisma.competitor.count({ where: { project: { user_id: userId } } }),
+    ])
+
+    return {
+        project_count: projectCount,
+        prompt_count: promptCount,
+        competitor_count: competitorCount,
+    }
+}
+
+async function getCurrentPeriod(userId: string): Promise<{ start: Date; end: Date }> {
+    return getAccessPeriod(userId)
 }
 
 export async function createSubscription(input: CreateSubscriptionInput): Promise<CreateSubscriptionResponse> {
@@ -169,6 +158,7 @@ export async function createSubscription(input: CreateSubscriptionInput): Promis
     const activeSubscription = await prisma.subscription.findFirst({
         where: {
             user_id: user.id,
+            stripe_subscription_id: { not: null },
             status: {
                 in: ACCESS_STATUSES,
             },
@@ -365,128 +355,161 @@ export async function handleStripeWebhook(rawBody: Buffer | string, signature: s
 }
 
 export async function getUserPlan(userId: string): Promise<Plan> {
-    const subscription = await prisma.subscription.findFirst({
-        where: {
-            user_id: userId,
-            status: {
-                in: ACCESS_STATUSES,
-            },
-        },
-        orderBy: { created_at: "desc" },
-        select: { plan: true },
-    })
-
-    if (!subscription) {
-        return Plan.FREE
-    }
-
-    return subscription.plan
+    return (await getEffectivePlanAccess(userId)).effective_plan
 }
 
 export async function getPlanLimits(userId: string): Promise<PlanLimits> {
-    const plan = await getUserPlan(userId)
-    return PLAN_LIMITS[plan]
+    return (await getEffectivePlanAccess(userId)).limits
 }
 
-export async function getMyPlan(userId: string): Promise<MyPlanResponse> {
-    const subscription = await prisma.subscription.findFirst({
-        where: {
-            user_id: userId,
-            status: {
-                in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING, SubscriptionStatus.PAST_DUE, SubscriptionStatus.INCOMPLETE],
-            },
-        },
-        orderBy: { created_at: "desc" },
-        select: {
-            id: true,
-            plan: true,
-            status: true,
-            current_period_start: true,
-            current_period_end: true,
-            cancel_at_period_end: true,
-            trial_starts_at: true,
-            trial_ends_at: true,
-        },
-    })
-
-    const plan = subscription?.status === SubscriptionStatus.INCOMPLETE
-        ? Plan.FREE
-        : subscription?.plan ?? Plan.FREE
-
-    const usage = await prisma.planUsage.findFirst({
-        where: { user_id: userId },
-        orderBy: { period_start: "desc" },
-        select: {
-            prompt_count: true,
-            project_count: true,
-            competitor_count: true,
-            monthly_runs_used: true,
-            period_start: true,
-            period_end: true,
-        },
-    })
+export async function getPlanQuota(userId: string): Promise<PlanQuotaResponse> {
+    const access = await getEffectivePlanAccess(userId)
+    const plan = access.plan
+    const limits = access.limits
+    const usage = await getLiveUsageCounts(userId)
 
     return {
         plan,
-        status: subscription?.status ?? "FREE",
-        subscription,
-        limits: PLAN_LIMITS[plan],
-        usage: usage ?? {
-            prompt_count: 0,
-            project_count: 0,
-            competitor_count: 0,
-            monthly_runs_used: 0,
-            period_start: null,
-            period_end: null,
+        limits,
+        usage,
+        remaining: {
+            projects: remainingNumber(limits.projects, usage.project_count),
+            prompts: remainingNumber(limits.prompts, usage.prompt_count),
+            competitors: remaining(limits.competitors, usage.competitor_count),
+        },
+    }
+}
+
+export async function assertCanCreateProjectWithPrompts(userId: string, promptCount: number) {
+    const quota = await getPlanQuota(userId)
+
+    if (quota.remaining.projects < 1) {
+        throw new Error(`Your ${quota.plan.toLowerCase()} plan can include up to ${quota.limits.projects} project${quota.limits.projects === 1 ? "" : "s"}.`)
+    }
+
+    if (promptCount > quota.remaining.prompts) {
+        throw new Error(`Your ${quota.plan.toLowerCase()} plan has ${quota.remaining.prompts} prompt${quota.remaining.prompts === 1 ? "" : "s"} remaining across all projects.`)
+    }
+
+    return quota
+}
+
+export async function assertCanCreatePrompts(userId: string, promptCount = 1) {
+    const quota = await getPlanQuota(userId)
+
+    if (promptCount > quota.remaining.prompts) {
+        throw new Error(`Your ${quota.plan.toLowerCase()} plan has ${quota.remaining.prompts} prompt${quota.remaining.prompts === 1 ? "" : "s"} remaining across all projects.`)
+    }
+
+    return quota
+}
+
+export async function getMyPlan(userId: string): Promise<MyPlanResponse> {
+    const access = await getEffectivePlanAccess(userId)
+    const { start, end } = await getCurrentPeriod(userId)
+    const [liveUsage, monthlyRunsUsed, credits] = await Promise.all([
+        getLiveUsageCounts(userId),
+        prisma.run.count({
+            where: {
+                project: { user_id: userId },
+                ran_at: { gte: start, lt: end },
+            },
+        }),
+        getCreditBalance(userId),
+    ])
+
+    return {
+        plan: access.plan,
+        effective_plan: access.effective_plan,
+        status: access.status,
+        subscription: access.subscription,
+        trial: access.trial,
+        limits: access.limits,
+        usage: {
+            prompt_count: liveUsage.prompt_count,
+            project_count: liveUsage.project_count,
+            competitor_count: liveUsage.competitor_count,
+            monthly_runs_used: monthlyRunsUsed,
+            credits_used: credits.used,
+            credits_remaining: credits.remaining,
+            period_start: start,
+            period_end: end,
         },
     }
 }
 
 export async function canCreateProject(userId: string): Promise<LimitCheckResponse> {
-    const plan = await getUserPlan(userId)
-    const limit = PLAN_LIMITS[plan].projects
-    const used = await prisma.project.count({ where: { user_id: userId } })
+    const quota = await getPlanQuota(userId)
+    const plan = quota.plan
+    const limit = quota.limits.projects
+    const used = quota.usage.project_count
     const allowed = used < limit
 
     return buildCheck("project", plan, limit, used, allowed, allowed ? undefined : "Project limit reached")
 }
 
 export async function canCreatePrompt(userId: string): Promise<LimitCheckResponse> {
-    const plan = await getUserPlan(userId)
-    const limit = PLAN_LIMITS[plan].prompts
-    const used = await prisma.prompt.count({
-        where: {
-            project: {
-                user_id: userId,
-            },
-        },
-    })
+    const quota = await getPlanQuota(userId)
+    const plan = quota.plan
+    const limit = quota.limits.prompts
+    const used = quota.usage.prompt_count
     const allowed = used < limit
 
     return buildCheck("prompt", plan, limit, used, allowed, allowed ? undefined : "Prompt limit reached")
 }
 
 export async function canAddCompetitor(userId: string): Promise<LimitCheckResponse> {
-    const plan = await getUserPlan(userId)
-    const limit = PLAN_LIMITS[plan].competitors
-    const used = await prisma.competitor.count({
-        where: {
-            project: {
-                user_id: userId,
-            },
-        },
-    })
-    const allowed = used < limit
+    const quota = await getPlanQuota(userId)
+    const plan = quota.plan
+    const limit = quota.limits.competitors
+    const used = quota.usage.competitor_count
+    const allowed = isWithinLimit(limit, used)
 
     return buildCheck("competitor", plan, limit, used, allowed, allowed ? undefined : "Competitor limit reached")
 }
 
-export async function canRunRefresh(userId: string): Promise<LimitCheckResponse> {
-    const plan = await getUserPlan(userId)
-    const limit = PLAN_LIMITS[plan].refreshes_per_week
+export async function assertCanAddCompetitor(userId: string) {
+    const check = await canAddCompetitor(userId)
+    if (!check.allowed) {
+        throw new Error(`Your ${check.plan.toLowerCase()} plan can track up to ${formatLimit(check.limit as number | "unlimited")} competitor${check.limit === 1 ? "" : "s"}.`)
+    }
+    return check
+}
+
+export async function assertCanAddCompetitors(userId: string, count: number) {
+    if (count <= 0) return getPlanQuota(userId)
+    const quota = await getPlanQuota(userId)
+    const limit = quota.limits.competitors
+    if (limit !== "unlimited" && quota.usage.competitor_count + count > limit) {
+        const remainingCount = remaining(limit, quota.usage.competitor_count)
+        throw new Error(`Your ${quota.plan.toLowerCase()} plan has ${remainingCount} competitor${remainingCount === 1 ? "" : "s"} remaining.`)
+    }
+    return quota
+}
+
+export async function canRunRefresh(userId: string, projectId?: string): Promise<LimitCheckResponse> {
+    const access = await getEffectivePlanAccess(userId)
+    const plan = access.plan
+    const limit = access.limits.refreshes_per_week
+
+    if (access.trial.expired) {
+        return buildCheck("refresh", plan, 0, 0, false, "Your 14-day free trial has ended. Upgrade to resume scraping.")
+    }
 
     if (limit === "daily") {
-        return buildCheck("refresh", plan, "daily", 0, true)
+        if (!projectId) {
+            return buildCheck("refresh", plan, "daily", 0, true)
+        }
+
+        const used = await prisma.run.count({
+            where: {
+                project_id: projectId,
+                project: { user_id: userId },
+                ran_at: { gte: startOfToday() },
+            },
+        })
+        const allowed = used < 1
+        return buildCheck("refresh", plan, "daily", used, allowed, allowed ? undefined : "This project already refreshed today.")
     }
 
     const since = new Date()
@@ -497,6 +520,7 @@ export async function canRunRefresh(userId: string): Promise<LimitCheckResponse>
             project: {
                 user_id: userId,
             },
+            ...(projectId ? { project_id: projectId } : {}),
             ran_at: {
                 gte: since,
             },
@@ -508,16 +532,18 @@ export async function canRunRefresh(userId: string): Promise<LimitCheckResponse>
 }
 
 export async function canUseSara(userId: string): Promise<LimitCheckResponse> {
-    const plan = await getUserPlan(userId)
-    const saraAccess = PLAN_LIMITS[plan].sara
+    const access = await getEffectivePlanAccess(userId)
+    const plan = access.plan
+    const saraAccess = access.limits.sara
     const allowed = saraAccess !== "none"
 
     return buildCheck("sara", plan, saraAccess, 0, allowed, allowed ? undefined : "Sara is not included in this plan")
 }
 
 export async function canExport(userId: string): Promise<LimitCheckResponse> {
-    const plan = await getUserPlan(userId)
-    const exportAccess = PLAN_LIMITS[plan].exports
+    const access = await getEffectivePlanAccess(userId)
+    const plan = access.plan
+    const exportAccess = access.limits.exports
     const allowed = exportAccess !== "none"
 
     return buildCheck("export", plan, exportAccess, 0, allowed, allowed ? undefined : "Exports are not included in this plan")

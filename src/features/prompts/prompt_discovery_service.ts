@@ -1,4 +1,5 @@
 import prisma from "../../lib/prisma"
+import { getPlanQuota } from "../subscription/subscription_service"
 
 type Candidate = {
     text: string
@@ -194,13 +195,15 @@ export async function discoverPromptCandidates(project_id: string) {
         }
     }
 
+    const quota = await getPlanQuota(project.user_id)
+    const remainingPrompts = quota.remaining.prompts
     const deduped = uniqueByText(candidates)
         .filter(candidate => !existingTexts.has(normalize(candidate.text)))
         .sort((a, b) => b.priority_score - a.priority_score)
-        .slice(0, 12)
+        .slice(0, Math.min(12, remainingPrompts))
 
     let created = 0
-    let skipped = 0
+    let skipped = Math.max(0, uniqueByText(candidates).filter(candidate => !existingTexts.has(normalize(candidate.text))).length - deduped.length)
 
     for (const candidate of deduped) {
         const existing = await prisma.prompt.findFirst({
@@ -253,6 +256,8 @@ export async function discoverPromptCandidates(project_id: string) {
         total_candidates: deduped.length,
         message: created
             ? `Found ${created} evidence-backed prompt suggestions.`
+            : remainingPrompts === 0
+                ? "Prompt limit reached. Upgrade or remove prompts before adding new suggestions."
             : "No new prompt suggestions found. Your current set already covers the discovered intents.",
     }
 }

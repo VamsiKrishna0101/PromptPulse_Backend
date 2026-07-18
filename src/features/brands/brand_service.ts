@@ -1,6 +1,7 @@
 import prisma from "../../lib/prisma"
 import type { AddCompetitorInput } from "./brand_types"
 import { buildChatWhere, type DashboardFilters } from "../dashboard/dashboard_service"
+import { assertCanAddCompetitor } from "../subscription/subscription_service"
 
 type ChatWithMentions = Awaited<ReturnType<typeof loadBrandChats>>[number]
 
@@ -112,8 +113,8 @@ export async function getDiscoveredBrands(project_id: string, filters?: Dashboar
     })).map(row => attachDeltas(row, brandStats(row.brand_name, previousChats))).sort((a, b) => b.visibility - a.visibility)
 }
 
-export async function addCompetitor(input: AddCompetitorInput) {
-    const { project_id, name, url } = input
+export async function addCompetitor(input: AddCompetitorInput & { user_id: string }) {
+    const { project_id, name, url, user_id } = input
 
     const existing = await prisma.competitor.findFirst({
         where: { project_id, name }
@@ -125,6 +126,8 @@ export async function addCompetitor(input: AddCompetitorInput) {
         }
         return existing
     }
+
+    await assertCanAddCompetitor(user_id)
 
     return prisma.competitor.create({
         data: { project_id, name, url }

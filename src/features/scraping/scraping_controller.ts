@@ -3,6 +3,7 @@ import { Request, Response } from "express"
 import { enqueueProjectRun, getScrapeRun } from "./scrape_orchestration_service"
 import { assertProjectAccess } from "../projects/project_access"
 import type { AuthenticatedRequest } from "../../middleware/auth"
+import { canRunRefresh } from "../subscription/subscription_service"
 
 export const enqueueProjectRunController = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -13,7 +14,13 @@ export const enqueueProjectRunController = async (req: Request, res: Response): 
             return
         }
 
-        await assertProjectAccess(project_id, (req as AuthenticatedRequest).user.id)
+        const userId = (req as AuthenticatedRequest).user.id
+        await assertProjectAccess(project_id, userId)
+        const refreshCheck = await canRunRefresh(userId, project_id)
+        if (!refreshCheck.allowed) {
+            res.status(403).json({ error: refreshCheck.reason ?? "Your plan does not allow another refresh right now." })
+            return
+        }
 
         const parsedEngines = Array.isArray(engines)
             ? engines.map((engine: string) => engine.toUpperCase()).filter((engine: string) => engine in Engine) as Engine[]

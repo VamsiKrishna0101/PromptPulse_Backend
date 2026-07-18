@@ -126,7 +126,8 @@ export async function chatWithSaraStreamController(req: Request, res: Response):
             message_id: result.message_id,
             citations: result.citations,
             suggested_actions: result.suggested_actions,
-            confidence: result.confidence
+            confidence: result.confidence,
+            debug: result.debug
         })
         res.end()
     } catch (error) {
@@ -206,7 +207,7 @@ function handleSaraError(error: unknown, res: Response, fallback: string) {
 
     if (error instanceof Error && error.message === "SARA_NOT_READY") {
         res.status(409).json({
-            error: "Sara needs at least 7 days of project data before chatting",
+            error: "Sara needs at least 1 day of project data before chatting",
             details: (error as Error & { details?: unknown }).details
         })
         return
@@ -224,7 +225,7 @@ function writeSaraEvent(res: Response, event: string, payload: unknown) {
 function serializeSaraStreamError(error: unknown, fallback: string) {
     if (error instanceof Error && error.message === "SARA_NOT_READY") {
         return {
-            error: "Sara needs at least 7 days of project data before chatting",
+            error: "Sara needs at least 1 day of project data before chatting",
             details: (error as Error & { details?: unknown }).details
         }
     }

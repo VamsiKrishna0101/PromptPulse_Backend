@@ -147,6 +147,8 @@ export async function runPrompt(input: RunPromptInput) {
         citations ?? []
     )
 
+    const sourceRows = buildSourceRows(analysis.sources, citations ?? [])
+
     const chat = await prisma.chat.create({
         data: {
             run_id,
@@ -156,7 +158,8 @@ export async function runPrompt(input: RunPromptInput) {
             geo_country_name: geo_country_name ?? null,
             geo_city: geo_city ?? null,
             ai_model,
-            raw_response,
+            raw_response,  // always keep original scraper dump as truth
+            display_response: null,
             answer_blocks: normalizeAnswerBlocks(
                 raw_response,
                 analysis.brand_mentions.map(mention => mention.brand_name)
@@ -168,17 +171,13 @@ export async function runPrompt(input: RunPromptInput) {
             brand_mentions: {
                 create: analysis.brand_mentions.map(m => ({
                     brand_name: m.brand_name,
+                    domain: m.domain ?? null,  // persist the real domain (peec.ai, profound.ai etc.)
                     position: m.position ?? null,
                     sentiment_score: m.sentiment_score ?? null
                 }))
             },
             sources: {
-                create: analysis.sources.map(s => ({
-                    url: s.url,
-                    domain: s.domain,
-                    source_type: s.source_type,
-                    is_cited: s.is_cited
-                }))
+                create: sourceRows
             }
         },
         include: {
@@ -187,37 +186,113 @@ export async function runPrompt(input: RunPromptInput) {
         }
     })
 
-    if (citations?.length) {
-        const existingUrls = new Set(chat.sources.map(source => source.url))
-        const citationSources = citations
-            .filter(citation => citation.url && !existingUrls.has(citation.url))
-            .map(citation => ({
-                chat_id: chat.id,
-                url: citation.url,
-                domain: safeDomain(citation.url),
-                source_type: "OTHER" as const,
-                is_cited: true
-            }))
+    if (input.enqueue_source_enrichment !== false && process.env.SOURCE_ENRICHMENT_AUTO_ENQUEUE !== "false") {
+        try {
+            const maxSources = Math.max(0, Number(process.env.SOURCE_ENRICHMENT_MAX_PER_CHAT ?? 8))
+            const sources = maxSources > 0
+                ? await prisma.source.findMany({
+                    where: {
+                        chat_id: chat.id,
+                        url: { not: "" },
+                        source_url_content_id: null,
+                    },
+                    select: { id: true },
+                    orderBy: [
+                        { is_cited: "desc" },
+                        { created_at: "asc" },
+                    ],
+                    take: maxSources,
+                })
+                : []
 
-        if (citationSources.length) {
-            await prisma.source.createMany({ data: citationSources })
+            const queued = await Promise.allSettled(
+                sources.map((source, index) => enqueueSourceEnrichment(source.id, index * 1000))
+            )
+
+            const failed = queued.filter(result => result.status === "rejected").length
+            if (failed > 0) {
+                console.warn("Some source enrichment jobs could not be queued", {
+                    chat_id: chat.id,
+                    failed,
+                    total: queued.length,
+                })
+            }
+        } catch (error) {
+            console.warn("Source enrichment enqueue skipped", {
+                chat_id: chat.id,
+                error: error instanceof Error ? error.message : error,
+            })
         }
     }
 
-    const sources = await prisma.source.findMany({
-        where: { chat_id: chat.id },
-        select: { id: true }
-    })
-
-    await Promise.all(sources.map((source, index) => enqueueSourceEnrichment(source.id, index * 1000)))
-    void ingestChatById(chat.id).catch(error => {
-        console.warn("Sara chat ingestion failed", { chat_id: chat.id, error })
-    })
+    if (input.ingest_chat !== false) {
+        void ingestChatById(chat.id).catch(error => {
+            console.warn("Sara chat ingestion failed", { chat_id: chat.id, error })
+        })
+    }
 
     return chat
 }
 
-function safeDomain(url: string) {
+function buildSourceRows(
+    analysisSources: {
+        url: string
+        domain: string
+        source_type: 'EDITORIAL' | 'CORPORATE' | 'UGC' | 'SOCIAL' | 'COMPETITOR' | 'YOU' | 'REFERENCE' | 'INSTITUTIONAL' | 'OTHER'
+        is_cited: boolean
+    }[],
+    citations: { text: string; url: string }[]
+) {
+    const rows: {
+        url: string
+        domain: string
+        source_type: 'EDITORIAL' | 'CORPORATE' | 'UGC' | 'SOCIAL' | 'COMPETITOR' | 'YOU' | 'REFERENCE' | 'INSTITUTIONAL' | 'OTHER'
+        is_cited: boolean
+        title?: string | null
+    }[] = []
+    const byKey = new Map<string, typeof rows[number]>()
+
+    for (const source of analysisSources) {
+        const url = source.url?.trim()
+        const domain = source.domain?.trim() || safeDomain(url)
+        if (!url && !domain) continue
+
+        const row = {
+            url: url || domain || "unknown-source",
+            domain: domain || url || "unknown-source",
+            source_type: source.source_type || "OTHER",
+            is_cited: Boolean(source.is_cited),
+        }
+        byKey.set(sourceKey(row.url, row.domain), row)
+    }
+
+    for (const citation of citations) {
+        const url = citation.url?.trim()
+        if (!url) continue
+        const domain = safeDomain(url)
+        const key = sourceKey(url, domain)
+        const existing = byKey.get(key)
+        const title = citation.text && citation.text !== url ? citation.text : null
+
+        byKey.set(key, {
+            url,
+            domain,
+            source_type: existing?.source_type ?? "OTHER",
+            is_cited: true,
+            title: existing?.title ?? title,
+        })
+    }
+
+    rows.push(...byKey.values())
+    return rows
+}
+
+function sourceKey(url: string | null | undefined, domain: string | null | undefined) {
+    return (url?.trim() || domain?.trim() || "").toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "")
+}
+
+function safeDomain(url: string | null | undefined) {
+    if (!url) return ""
     try {
         return new URL(url).hostname.replace(/^www\./, "")
     } catch {
@@ -379,8 +454,12 @@ export async function getRecentChats(project_id: string, filters?: DashboardFilt
         id: chat.id,
         ai_model: chat.ai_model,
         prompt_text: chat.prompt.text,
-        excerpt: chat.raw_response.slice(0, 200).replace(/\n/g, ' '),
+        excerpt: (chat.display_response || chat.raw_response)
+            .replace(/[#*`\[\]>]/g, '')
+            .replace(/\n/g, ' ')
+            .slice(0, 200),
         raw_response: chat.raw_response,
+        display_response: chat.display_response ?? null,
         answer_blocks: chat.answer_blocks,
         brand_mentioned: chat.brand_mentioned,
         brand_position: chat.brand_position,
@@ -388,11 +467,13 @@ export async function getRecentChats(project_id: string, filters?: DashboardFilt
         brands: chat.brand_mentions.map(m => m.brand_name),
         brand_details: chat.brand_mentions,
         sources: chat.sources,
+        screenshot_path: chat.screenshot_path,
+        has_screenshot: Boolean(chat.screenshot_path?.startsWith("gs://")),
         ran_at: chat.run.ran_at
     }))
 }
 
-export async function getChatsPage(project_id: string, filters?: DashboardFilters, page = 1, pageSize = 20) {
+export async function getChatsPage(project_id: string, filters?: DashboardFilters, page = 1, pageSize = 10) {
     const chatWhere = buildChatWhere(project_id, filters || {})
     const safePage = Math.max(1, page)
     const safePageSize = Math.min(Math.max(1, pageSize), 50)
@@ -418,8 +499,12 @@ export async function getChatsPage(project_id: string, filters?: DashboardFilter
             id: chat.id,
             ai_model: chat.ai_model,
             prompt_text: chat.prompt.text,
-            excerpt: chat.raw_response.slice(0, 200).replace(/\n/g, ' '),
+            excerpt: (chat.display_response || chat.raw_response)
+                .replace(/[#*`\[\]>]/g, '') // strip markdown symbols for cleaner preview
+                .replace(/\n/g, ' ')
+                .slice(0, 200),
             raw_response: chat.raw_response,
+            display_response: chat.display_response ?? null,
             answer_blocks: chat.answer_blocks,
             brand_mentioned: chat.brand_mentioned,
             brand_position: chat.brand_position,
@@ -427,6 +512,8 @@ export async function getChatsPage(project_id: string, filters?: DashboardFilter
             brands: chat.brand_mentions.map(m => m.brand_name),
             brand_details: chat.brand_mentions,
             sources: chat.sources,
+            screenshot_path: chat.screenshot_path,
+            has_screenshot: Boolean(chat.screenshot_path?.startsWith("gs://")),
             ran_at: chat.run.ran_at
         })),
         page: safePage,

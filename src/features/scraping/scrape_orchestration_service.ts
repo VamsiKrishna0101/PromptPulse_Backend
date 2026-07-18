@@ -1,14 +1,23 @@
 import { Engine, Prisma, ScrapeJobStatus, VisibilityRunStatus } from "@prisma/client"
 import prisma from "../../lib/prisma"
 import { enqueueScrapeJob } from "../../queues/scrape_queue"
+import { getGeoCountryByName } from "../geo/countries"
+import { canRunRefresh } from "../subscription/subscription_service"
 
-const DEFAULT_ENGINES: Engine[] = [
+const CORE_DEFAULT_ENGINES: Engine[] = [
     Engine.CHATGPT,
     Engine.GEMINI,
     Engine.PERPLEXITY,
-    Engine.GOOGLE_AI_OVERVIEW,
     Engine.GOOGLE_AI_MODE
 ]
+
+function getDefaultEngines(): Engine[] {
+    if (process.env.BRIGHT_DATA_COPILOT_SCRAPER_ID?.trim()) {
+        return [...CORE_DEFAULT_ENGINES, Engine.COPILOT]
+    }
+
+    return CORE_DEFAULT_ENGINES
+}
 
 export async function enqueueProjectRun(input: {
     project_id: string
@@ -16,22 +25,30 @@ export async function enqueueProjectRun(input: {
     engines?: Engine[]
     scheduled_for?: Date
     profile?: string
+    enqueue_jobs?: boolean
 }) {
-    const engines = input.engines?.length ? input.engines : DEFAULT_ENGINES
-    const prompts = await prisma.prompt.findMany({
-        where: {
-            project_id: input.project_id,
-            is_active: true,
-            status: "ACTIVE",
-            ...(input.prompt_ids?.length ? { id: { in: input.prompt_ids } } : {})
-        },
-        include: {
-            geo_variants: {
-                where: { is_active: true }
-            }
-        },
-        orderBy: { created_at: "asc" }
-    })
+    const engines = input.engines?.length ? input.engines : getDefaultEngines()
+    const [project, prompts] = await Promise.all([
+        prisma.project.findUniqueOrThrow({
+            where: { id: input.project_id },
+            select: { brand_location: true }
+        }),
+        prisma.prompt.findMany({
+            where: {
+                project_id: input.project_id,
+                is_active: true,
+                status: "ACTIVE",
+                ...(input.prompt_ids?.length ? { id: { in: input.prompt_ids } } : {})
+            },
+            include: {
+                geo_variants: {
+                    where: { is_active: true }
+                }
+            },
+            orderBy: { created_at: "asc" }
+        })
+    ])
+    const projectCountry = getGeoCountryByName(project.brand_location)
 
     if (prompts.length === 0) {
         throw new Error("No active prompts found for this project")
@@ -54,6 +71,8 @@ export async function enqueueProjectRun(input: {
                 run_id: run.id,
                 project_id: input.project_id,
                 prompt_id: prompt.id,
+                geo_country_code: projectCountry?.code,
+                geo_country_name: projectCountry?.name,
                 engine,
                 status: ScrapeJobStatus.QUEUED,
                 profile: input.profile,
@@ -89,9 +108,12 @@ export async function enqueueProjectRun(input: {
     })
 
     const baseDelayMs = Math.max(0, input.scheduled_for ? input.scheduled_for.getTime() - Date.now() : 0)
-    const spacingMs = Number(process.env.SCRAPE_QUEUE_SPACING_MS ?? 180000)
+    // Reduced from 180000 (3 min) to 45000 (45 sec) — safe with proxy rotation
+    const spacingMs = Number(process.env.SCRAPE_QUEUE_SPACING_MS ?? 45000)
 
-    await Promise.all(jobs.map((job, index) => enqueueScrapeJob(job.id, baseDelayMs + index * spacingMs)))
+    if (input.enqueue_jobs !== false) {
+        await Promise.all(jobs.map((job, index) => enqueueScrapeJob(job.id, baseDelayMs + index * spacingMs)))
+    }
 
     return {
         run,
@@ -99,7 +121,9 @@ export async function enqueueProjectRun(input: {
     }
 }
 
-export async function enqueueDailyRuns() {
+export async function enqueueDailyRuns(options: {
+    enqueue_jobs?: boolean
+} = {}) {
     const projects = await prisma.project.findMany({
         where: {
             prompts: {
@@ -113,11 +137,22 @@ export async function enqueueDailyRuns() {
     })
 
     const results = []
-    const spacingMs = Number(process.env.PROJECT_DAILY_QUEUE_SPACING_MS ?? 900000)
+    const spacingMs = options.enqueue_jobs === false
+        ? 0
+        : Number(process.env.PROJECT_DAILY_QUEUE_SPACING_MS ?? 900000)
 
     for (let index = 0; index < projects.length; index += 1) {
+        const refreshCheck = await canRunRefresh(projects[index].user_id, projects[index].id)
+        if (!refreshCheck.allowed) {
+            continue
+        }
+
         const scheduled_for = new Date(Date.now() + index * spacingMs)
-        results.push(await enqueueProjectRun({ project_id: projects[index].id, scheduled_for }))
+        results.push(await enqueueProjectRun({
+            project_id: projects[index].id,
+            scheduled_for,
+            enqueue_jobs: options.enqueue_jobs,
+        }))
     }
 
     return results

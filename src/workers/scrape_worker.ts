@@ -1,7 +1,9 @@
-import "dotenv/config"
+import "../lib/env"
 import { Engine, ScrapeJobStatus, VisibilityRunStatus } from "@prisma/client"
 import { Worker } from "bullmq"
+import axios from "axios"
 import express from "express"
+import Redis from "ioredis"
 import prisma from "../lib/prisma"
 import { getRedisConnectionOptions } from "../lib/redis"
 import { SCRAPE_QUEUE_NAME, type ScrapeQueueJob } from "../queues/scrape_queue"
@@ -14,7 +16,31 @@ const engineMap: Record<Engine, UiEngine> = {
     GEMINI: "gemini",
     PERPLEXITY: "perplexity",
     GOOGLE_AI_OVERVIEW: "google_ai_overview",
-    GOOGLE_AI_MODE: "google_ai_mode"
+    GOOGLE_AI_MODE: "google_ai_mode",
+    COPILOT: "copilot",
+}
+
+// ─── Redis singleton for caching (separate from BullMQ connection) ─────────
+let _cacheRedis: Redis | null = null
+function getCacheRedis(): Redis {
+    if (!_cacheRedis) {
+        _cacheRedis = new Redis(getRedisConnectionOptions())
+        _cacheRedis.on("error", (err: Error) => console.error("[cache-redis]", err.message))
+    }
+    return _cacheRedis
+}
+
+// ─── Cache TTL: 20 hours for normal prompts ────────────────────────────────
+const CACHE_TTL_SECONDS = Number(process.env.SCRAPE_CACHE_TTL_SECONDS ?? 72000)
+
+/**
+ * Cross-user deduplication: cache key is engine+geo+prompt (normalized).
+ * If 10 users have the same prompt on the same engine, only ONE scrape fires.
+ */
+function buildCacheKey(engine: UiEngine, geo: string, prompt: string): string {
+    const normalizedPrompt = prompt.toLowerCase().replace(/\s+/g, " ").trim()
+    const hash = Buffer.from(`${engine}:${geo.toUpperCase()}:${normalizedPrompt}`).toString("base64url").slice(0, 40)
+    return `sc:v3:${hash}`
 }
 
 function toScrapeJobStatus(status: UiScrapeResult["status"]) {
@@ -22,6 +48,28 @@ function toScrapeJobStatus(status: UiScrapeResult["status"]) {
     if (status === "manual_needed") return ScrapeJobStatus.MANUAL_NEEDED
     if (status === "rate_limited") return ScrapeJobStatus.RATE_LIMITED
     return ScrapeJobStatus.FAILED
+}
+
+function formatWorkerError(error: unknown) {
+    if (axios.isAxiosError(error)) {
+        const url = error.config?.url
+        const status = error.response?.status
+        const detail = typeof error.response?.data === "string"
+            ? error.response.data.slice(0, 240)
+            : error.response?.data
+                ? JSON.stringify(error.response.data).slice(0, 240)
+                : undefined
+
+        return [
+            error.code ?? "AXIOS_ERROR",
+            error.message,
+            url ? `url=${url}` : undefined,
+            status ? `status=${status}` : undefined,
+            detail ? `detail=${detail}` : undefined,
+        ].filter(Boolean).join(" | ")
+    }
+
+    return error instanceof Error ? error.message : String(error)
 }
 
 async function refreshRunStatus(run_id: string) {
@@ -51,6 +99,12 @@ async function processScrapeJob(scrape_job_id: string) {
         include: { prompt: true }
     })
 
+    // Guard: if job was already completed by a previous BullMQ retry, skip it
+    if (scrapeJob.status === ScrapeJobStatus.SUCCESS) {
+        console.log(`Scrape job ${scrape_job_id} already succeeded — skipping duplicate BullMQ delivery`)
+        return
+    }
+
     await prisma.run.update({
         where: { id: scrapeJob.run_id },
         data: {
@@ -73,11 +127,45 @@ async function processScrapeJob(scrape_job_id: string) {
         ? buildGeoPromptText(scrapeJob.prompt.text, scrapeJob.geo_country_name, scrapeJob.geo_city)
         : scrapeJob.prompt.text
 
-    const result = await runUiScrape({
-        engine: engineMap[scrapeJob.engine],
-        prompt: promptTextToRun,
-        profile: scrapeJob.profile
-    })
+    const engine = engineMap[scrapeJob.engine]
+    const geo = (scrapeJob.geo_country_code ?? process.env.SCRAPER_DEFAULT_GEO ?? "US").toUpperCase()
+    console.log(`[scraper] job=${scrapeJob.id} engine=${engine} geo=${geo} provider=brightdata`)
+
+    // ── Cross-user cache: check if we already have a fresh result for this prompt ──
+    const cacheKey = buildCacheKey(engine, geo, promptTextToRun)
+    const cache = getCacheRedis()
+    let result: UiScrapeResult | null = null
+    let servedFromCache = false
+
+    try {
+        const cached = await cache.get(cacheKey)
+        if (cached) {
+            result = JSON.parse(cached) as UiScrapeResult
+            servedFromCache = true
+            console.log(`[cache-hit] job=${scrapeJob.id} engine=${engine} geo=${geo} key=${cacheKey}`)
+        }
+    } catch (e) {
+        console.error("[cache] Redis read error:", e)
+    }
+
+    if (!result) {
+        result = await runUiScrape({
+            engine,
+            prompt: promptTextToRun,
+            geo,
+        })
+
+        // Cache only clean successful results (not manual_needed which means login wall)
+        const isFallbackResult = result.model_label.includes("api-fallback")
+        if (result.status === "success" && result.answer_text && !isFallbackResult) {
+            try {
+                await cache.set(cacheKey, JSON.stringify(result), "EX", CACHE_TTL_SECONDS)
+                console.log(`[cache-set] engine=${engine} geo=${geo} ttl=${CACHE_TTL_SECONDS}s`)
+            } catch (e) {
+                console.error("[cache] Redis write error:", e)
+            }
+        }
+    }
 
     const status = toScrapeJobStatus(result.status)
     let chat_id: string | undefined
@@ -91,7 +179,7 @@ async function processScrapeJob(scrape_job_id: string) {
             geo_country_name: scrapeJob.geo_country_name,
             geo_city: scrapeJob.geo_city,
             raw_response: result.answer_text,
-            ai_model: result.model_label,
+            ai_model: servedFromCache ? `${result.model_label ?? engine}-cached` : result.model_label,
             screenshot_path: result.screenshot_path,
             citations: result.citations
         })
@@ -120,40 +208,82 @@ async function processScrapeJob(scrape_job_id: string) {
 
     await refreshRunStatus(scrapeJob.run_id)
 
+    // Throw for BullMQ to retry on transient failures only (FAILED / RATE_LIMITED)
+    // Do NOT throw for MANUAL_NEEDED — login walls won't fix themselves on retry
     if (status === ScrapeJobStatus.FAILED || status === ScrapeJobStatus.RATE_LIMITED) {
         throw new Error(result.error_reason ?? `Scrape ended with ${status}`)
     }
 }
 
+// Scrapes (especially ChatGPT) can take 90-180s.
+// lockDuration must be longer than the longest expected job or BullMQ marks it stalled.
+// We also extend the lock every LOCK_RENEW_MS so indefinitely-long jobs don't stall either.
+const LOCK_DURATION_MS = Number(process.env.SCRAPE_WORKER_LOCK_DURATION_MS ?? 900000)  // 15 min
+const LOCK_RENEW_MS = Number(process.env.SCRAPE_WORKER_LOCK_RENEW_MS ?? 15000)         // renew every 15s
+
 const worker = new Worker<ScrapeQueueJob, void, "scrape">(
     SCRAPE_QUEUE_NAME,
     async job => {
-        await processScrapeJob(job.data.scrape_job_id)
+        // Keep the BullMQ lock alive for the full duration of the scrape.
+        // Without this, BullMQ evicts the job as "stalled" after lockDuration ms.
+        const lockExtender = setInterval(async () => {
+            try {
+                await (job as any).extendLock(LOCK_DURATION_MS)
+            } catch {
+                // Job may have already completed — ignore
+            }
+        }, LOCK_RENEW_MS)
+
+        try {
+            await processScrapeJob(job.data.scrape_job_id)
+        } finally {
+            clearInterval(lockExtender)
+        }
     },
     {
         connection: getRedisConnectionOptions(),
-        concurrency: Number(process.env.SCRAPE_WORKER_CONCURRENCY ?? 1)
+        concurrency: Number(process.env.SCRAPE_WORKER_CONCURRENCY ?? 5),
+        lockDuration: LOCK_DURATION_MS,
+        stalledInterval: 30000,
+        maxStalledCount: 1,
+        limiter: {
+            max: Number(process.env.SCRAPE_WORKER_RATE_MAX ?? 10),
+            duration: Number(process.env.SCRAPE_WORKER_RATE_WINDOW_MS ?? 60000),
+        }
     }
 )
 
 worker.on("completed", job => {
-    console.log(`Scrape job completed: ${job.id}`)
+    console.log(`[worker] job completed: ${job?.data.scrape_job_id}`)
 })
 
 worker.on("failed", async (job, error) => {
     const scrape_job_id = job?.data.scrape_job_id
     if (scrape_job_id) {
-        const scrapeJob = await prisma.scrapeJob.update({
-            where: { id: scrape_job_id },
-            data: {
-                status: ScrapeJobStatus.FAILED,
-                error_reason: error.message,
-                completed_at: new Date()
+        try {
+            const scrapeJob = await prisma.scrapeJob.update({
+                where: { id: scrape_job_id },
+                data: {
+                    status: ScrapeJobStatus.FAILED,
+                    error_reason: error.message.slice(0, 500),
+                    completed_at: new Date()
+                }
+            })
+            await refreshRunStatus(scrapeJob.run_id)
+        } catch (updateError) {
+            if (updateError instanceof Error && updateError.message.includes("No record was found")) {
+                console.warn(`Scrape job ${scrape_job_id} no longer exists; ignoring stale Redis job ${job?.id}`)
+            } else {
+                console.error(`Could not mark scrape job ${scrape_job_id} as failed`, updateError)
             }
-        })
-        await refreshRunStatus(scrapeJob.run_id)
+        }
     }
-    console.error(`Scrape job failed: ${job?.id}`, error)
+    console.error(`[worker] job failed: ${job?.id} | attempts=${job?.attemptsMade} | ${formatWorkerError(error)}`)
+})
+
+worker.on("stalled", async (jobId) => {
+    // A stalled job means the worker crashed mid-execution. Mark it failed in Postgres.
+    console.warn(`[worker] job stalled (worker crashed?): ${jobId}`)
 })
 
 if (process.env.PORT) {
@@ -164,7 +294,8 @@ if (process.env.PORT) {
         res.json({
             service: "scrape-worker",
             status: "ok",
-            queue: SCRAPE_QUEUE_NAME
+            queue: SCRAPE_QUEUE_NAME,
+            concurrency: Number(process.env.SCRAPE_WORKER_CONCURRENCY ?? 5),
         })
     })
 
@@ -172,23 +303,23 @@ if (process.env.PORT) {
         res.json({
             status: "ok",
             queue: SCRAPE_QUEUE_NAME,
-            worker_running: worker.isRunning()
+            worker_running: worker.isRunning(),
+            concurrency: worker.concurrency,
         })
     })
 
     app.listen(port, "0.0.0.0", () => {
-        console.log(`Scrape worker health server listening on ${port}`)
+        console.log(`Scrape worker health server listening on :${port}`)
     })
 }
 
-process.on("SIGINT", async () => {
+async function shutdown() {
+    console.log("[worker] Shutting down gracefully...")
     await worker.close()
+    if (_cacheRedis) await _cacheRedis.quit()
     await prisma.$disconnect()
     process.exit(0)
-})
+}
 
-process.on("SIGTERM", async () => {
-    await worker.close()
-    await prisma.$disconnect()
-    process.exit(0)
-})
+process.on("SIGINT", shutdown)
+process.on("SIGTERM", shutdown)

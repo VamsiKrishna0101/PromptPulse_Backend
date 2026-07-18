@@ -1,30 +1,7 @@
 import prisma from '../../lib/prisma'
+export { GEO_COUNTRIES } from '../geo/countries'
 
 // ─── Geo: supported countries (top GEO markets) ───────────────────────────────
-
-export const GEO_COUNTRIES = [
-    { code: 'US', name: 'United States' },
-    { code: 'GB', name: 'United Kingdom' },
-    { code: 'DE', name: 'Germany' },
-    { code: 'FR', name: 'France' },
-    { code: 'NL', name: 'Netherlands' },
-    { code: 'AU', name: 'Australia' },
-    { code: 'CA', name: 'Canada' },
-    { code: 'IN', name: 'India' },
-    { code: 'BR', name: 'Brazil' },
-    { code: 'ES', name: 'Spain' },
-    { code: 'IT', name: 'Italy' },
-    { code: 'JP', name: 'Japan' },
-    { code: 'SG', name: 'Singapore' },
-    { code: 'AE', name: 'United Arab Emirates' },
-    { code: 'ZA', name: 'South Africa' },
-    { code: 'MX', name: 'Mexico' },
-    { code: 'SE', name: 'Sweden' },
-    { code: 'PL', name: 'Poland' },
-    { code: 'BE', name: 'Belgium' },
-    { code: 'CH', name: 'Switzerland' },
-] as const
-
 
 export type PromptStatus = 'ACTIVE' | 'SUGGESTED' | 'INACTIVE' | 'ARCHIVED' | 'DELETED'
 
@@ -290,6 +267,7 @@ export async function getGeoVariantsForPrompt(prompt_id: string) {
 
 export async function addGeoVariant(input: AddGeoVariantInput) {
     const { prompt_id, country_code, country_name, city } = input
+    const normalizedCity = city?.trim() || ""
 
     // Enable geo on the prompt if not already
     await prisma.prompt.update({
@@ -302,14 +280,14 @@ export async function addGeoVariant(input: AddGeoVariantInput) {
             prompt_id_country_code_city: {
                 prompt_id,
                 country_code: country_code.toUpperCase(),
-                city: city ?? null,
+                city: normalizedCity,
             },
         },
         create: {
             prompt_id,
             country_code: country_code.toUpperCase(),
             country_name,
-            city: city ?? null,
+            city: normalizedCity,
             is_active: true,
         },
         update: { is_active: true, country_name },

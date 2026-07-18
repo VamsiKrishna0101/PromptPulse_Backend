@@ -2,8 +2,8 @@ import 'dotenv/config'
 import { researchbrand } from '../onboarding/onboarding_service'
 import { promptgeneration } from '../onboarding/onboarding_service'
 
-const BRAND_NAME = 'Refractone'
-const BRAND_URL = 'https://refractone.com/'
+const BRAND_NAME = 'PromptPulse'
+const BRAND_URL = 'https://promptpulse.com/'
 
 console.log('Step 1: Researching brand with Parallel AI...')
 const brandResult = await researchbrand({ brand_name: BRAND_NAME, brand_url: BRAND_URL })

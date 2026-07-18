@@ -1,6 +1,8 @@
 import type { Request, Response } from "express"
 import type { AuthenticatedRequest } from "../../middleware/auth"
+import { spendCredits, refundCredits } from "../credits/credits_service"
 import { assertProjectAccess } from "../projects/project_access"
+import { CREDIT_COSTS } from "../subscription/plan_config"
 import {
     deleteSavedContentBrief,
     getSavedContentBrief,
@@ -137,17 +139,60 @@ export async function getGeoArticleController(req: Request, res: Response): Prom
 
         const user_id = (req as AuthenticatedRequest).user.id
         await assertProjectAccess(project_id, user_id)
+        const requestedFullArticle = readBoolean(req.query.generate) !== false
+        const reservedCost = requestedFullArticle ? CREDIT_COSTS.full_article : CREDIT_COSTS.content_brief
+        const idempotencyKey = readCreditIdempotencyKey(req)
+            ?? `geoarticle:${user_id}:${project_id}:${readString(req.query.prompt_id) ?? "auto"}:${readNumber(req.query.offset) ?? 0}:${requestedFullArticle ? "article" : "brief"}:${Date.now()}`
 
-        const data = await getGeoArticle({
-            project_id,
-            days: readNumber(req.query.days),
-            topic: readString(req.query.topic),
-            prompt_id: readString(req.query.prompt_id),
-            model: readString(req.query.model),
-            generate: readBoolean(req.query.generate),
-            geo_country: readString(req.query.geo_country),
-            offset: readNumber(req.query.offset),
+        await spendCredits({
+            userId: user_id,
+            amount: reservedCost,
+            action: requestedFullArticle ? "full_article" : "content_brief",
+            description: requestedFullArticle ? "Full GEO article generation" : "GEO content brief generation",
+            idempotencyKey,
+            metadata: {
+                project_id,
+                prompt_id: readString(req.query.prompt_id),
+                offset: readNumber(req.query.offset),
+                generate: requestedFullArticle,
+            },
         })
+
+        let data: Awaited<ReturnType<typeof getGeoArticle>>
+        try {
+            data = await getGeoArticle({
+                project_id,
+                days: readNumber(req.query.days),
+                topic: readString(req.query.topic),
+                prompt_id: readString(req.query.prompt_id),
+                model: readString(req.query.model),
+                generate: readBoolean(req.query.generate),
+                geo_country: readString(req.query.geo_country),
+                offset: readNumber(req.query.offset),
+            })
+        } catch (error) {
+            await refundCredits({
+                userId: user_id,
+                amount: reservedCost,
+                action: "credit_refund",
+                description: "Refund for failed GEO content generation",
+                idempotencyKey: `refund:${idempotencyKey}`,
+                metadata: { project_id },
+            })
+            throw error
+        }
+
+        if (requestedFullArticle && data.status !== "GENERATED") {
+            await refundCredits({
+                userId: user_id,
+                amount: CREDIT_COSTS.full_article - CREDIT_COSTS.content_brief,
+                action: "credit_refund",
+                description: "Partial refund because GEO article returned brief-only",
+                idempotencyKey: `partial-refund:${idempotencyKey}`,
+                metadata: { project_id, status: data.status },
+            })
+        }
+
         const saved = await upsertSavedContentBrief({ project_id, user_id, response: data })
 
         res.status(200).json({ ...data, saved_content_brief_id: saved.id })
@@ -173,6 +218,17 @@ export async function getGeoArticleController(req: Request, res: Response): Prom
             return
         }
 
+        if (error instanceof Error && error.message.startsWith("Not enough credits")) {
+            res.status(402).json({ error: error.message })
+            return
+        }
+
         res.status(500).json({ error: "Failed to get GEO article" })
     }
+}
+
+function readCreditIdempotencyKey(req: Request) {
+    const header = req.header("Idempotency-Key")
+    if (header?.trim()) return header.trim().slice(0, 180)
+    return undefined
 }

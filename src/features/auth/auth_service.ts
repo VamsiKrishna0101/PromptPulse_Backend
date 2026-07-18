@@ -1,9 +1,10 @@
-import { Resend } from 'resend'
 import bcrypt from 'bcryptjs'
 import prisma from '../../lib/prisma'
 import { isWorkEmail, generateOtp } from '../../utils/email'
 import { generateAccessToken, generateRefreshToken } from '../../utils/jwt'
 import type { RegisterInput, RegisterResponse, LoginInput, LoginResponse } from './auth_types'
+import { sendVerificationOtpEmail } from '../email/email_service'
+import { ensureFreeTrialSubscription, getEffectivePlanAccess } from '../subscription/entitlements'
 
 
 export async function verifyUserOtp(email: string, otp: string) {
@@ -42,9 +43,19 @@ export async function verifyUserOtp(email: string, otp: string) {
         },
     })
 
+    await ensureFreeTrialSubscription(updatedUser.id)
+    const access = await getEffectivePlanAccess(updatedUser.id)
+
+    const accessToken = generateAccessToken(updatedUser.id)
+    const refreshToken = generateRefreshToken(updatedUser.id)
+
     return {
         message: 'Email verified successfully',
-        user: updatedUser,
+        user: { ...updatedUser, effective_plan: access.effective_plan },
+        access_token: accessToken,
+        refresh_token: refreshToken,
+        accessToken,
+        refreshToken,
     }
 }
 
@@ -59,7 +70,7 @@ export async function registerUser(input: RegisterInput): Promise<RegisterRespon
 
     // 2. Duplicate check
     const existing = await prisma.user.findUnique({ where: { email } })
-    if (existing) {
+    if (existing?.is_verified) {
         throw new Error('An account with this email already exists.')
     }
 
@@ -67,32 +78,60 @@ export async function registerUser(input: RegisterInput): Promise<RegisterRespon
     const salt = await bcrypt.genSalt(10)
     const hashedPassword = await bcrypt.hash(password, salt)
 
-    // 5. Create user
-    const user = await prisma.user.create({
-        data: {
-            email,
-            password: hashedPassword,
-            account_type,
-            is_verified: true, // Set to true by default as requested
-        },
-        select: {
-            id: true,
-            email: true,
-            account_type: true,
-            role: true,
-            plan: true,
-        },
-    })
+    const otp = generateOtp()
+    const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000)
 
-    // 7. Issue tokens
-    const accessToken = generateAccessToken(user.id)
-    const refreshToken = generateRefreshToken(user.id)
+    // 5. Create or refresh an unverified user, then send OTP.
+    const user = existing
+        ? await prisma.user.update({
+            where: { id: existing.id },
+            data: {
+                password: hashedPassword,
+                account_type,
+                is_verified: false,
+                otp,
+                otp_expires_at: otpExpiresAt,
+            },
+            select: {
+                id: true,
+                email: true,
+                account_type: true,
+                role: true,
+                plan: true,
+                is_verified: true,
+            },
+        })
+        : await prisma.user.create({
+            data: {
+                email,
+                password: hashedPassword,
+                account_type,
+                is_verified: false,
+                otp,
+                otp_expires_at: otpExpiresAt,
+            },
+            select: {
+                id: true,
+                email: true,
+                account_type: true,
+                role: true,
+                plan: true,
+                is_verified: true,
+            },
+        })
+
+    try {
+        await sendVerificationOtpEmail(email, otp)
+    } catch (error) {
+        const allowDevOtpFallback = process.env.NODE_ENV !== "production" && process.env.EMAIL_DEV_OTP_FALLBACK !== "false"
+        if (!allowDevOtpFallback) throw error
+
+        console.warn(`[DEV OTP FALLBACK] Could not send verification email to ${email}. Use OTP: ${otp}`)
+    }
 
     return {
-        message: 'Registration successful.',
+        message: 'Verification code sent.',
         user,
-        accessToken,
-        refreshToken,
     }
 }
 
@@ -123,6 +162,8 @@ export async function login(input: LoginInput): Promise<LoginResponse> {
     if (!user.is_verified) {
         throw new Error("please verify your email")
     }
+    await ensureFreeTrialSubscription(user.id)
+    const access = await getEffectivePlanAccess(user.id)
     return {
         message: "welcome back",
         user: {
@@ -131,6 +172,7 @@ export async function login(input: LoginInput): Promise<LoginResponse> {
             account_type: user.account_type,
             role: user.role,
             plan: user.plan,
+            effective_plan: access.effective_plan,
             is_verified: user.is_verified
         },
         access_token: accessToken,

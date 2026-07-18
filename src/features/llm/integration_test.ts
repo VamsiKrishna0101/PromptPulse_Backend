@@ -133,7 +133,7 @@ discovered.forEach((b, i) => {
 })
 
 console.log('\nStep 5: addCompetitor (user tracks Kylas CRM)...')
-const competitor = await addCompetitor({ project_id: project.id, name: 'Kylas CRM' })
+const competitor = await addCompetitor({ project_id: project.id, name: 'Kylas CRM', user_id: user.id })
 console.log(`Tracked: ${competitor.name} (ID: ${competitor.id})`)
 
 console.log('\nStep 6: getTrackedCompetitors (user\'s saved list with stats)...')

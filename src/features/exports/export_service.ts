@@ -450,7 +450,7 @@ async function buildExcel(
     rows: CsvRow[],
 ): Promise<Buffer> {
     const wb = new ExcelJS.Workbook()
-    wb.creator = "GeoLens AI"
+    wb.creator = "PromptPulse"
     wb.created = new Date()
     wb.modified = new Date()
 
@@ -477,7 +477,7 @@ async function buildExcel(
         ["Filter: Model", filters.model ?? "All models"],
         ["Filter: Topic", filters.topic ?? "All topics"],
         ["Total Rows", rows.length],
-        ["Powered by", "GeoLens AI"],
+        ["Powered by", "PromptPulse"],
     ]
 
     metaRows.forEach(([k, v], i) => {
@@ -955,7 +955,7 @@ function renderFooter(doc: PDFKit.PDFDocument, brandName: string, page: number, 
     doc.text(`Confidential — Generated for ${brandName}`, margin, fy, { lineBreak: false })
 
     doc.fillColor(PDF.muted).fontSize(7.5).font("Helvetica-Bold")
-    doc.text("GeoLens AI", 0, fy, { align: "center", lineBreak: false })
+    doc.text("PromptPulse", 0, fy, { align: "center", lineBreak: false })
 
     const pgText = `Page ${page} of ${total}`
     const pgW = doc.widthOfString(pgText, { fontSize: 7.5 })

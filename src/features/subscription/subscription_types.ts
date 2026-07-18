@@ -5,10 +5,11 @@ export type PaidPlan = Exclude<Plan, "FREE">
 export type PlanLimits = {
     projects: number
     prompts: number
-    competitors: number
+    competitors: number | "unlimited"
     refreshes_per_week: number | "daily"
     sara: "none" | "basic" | "full" | "advanced"
     exports: "none" | "basic" | "full"
+    credits: number
 }
 
 export type CreateSubscriptionInput = {
@@ -24,6 +25,7 @@ export type CreateSubscriptionResponse = {
 
 export type MyPlanResponse = {
     plan: Plan
+    effective_plan: Plan
     status: string
     subscription: {
         id: string
@@ -35,12 +37,21 @@ export type MyPlanResponse = {
         trial_starts_at: Date | null
         trial_ends_at: Date | null
     } | null
+    trial: {
+        active: boolean
+        expired: boolean
+        starts_at: Date | null
+        ends_at: Date | null
+        days_left: number
+    }
     limits: PlanLimits
     usage: {
         prompt_count: number
         project_count: number
         competitor_count: number
         monthly_runs_used: number
+        credits_used: number
+        credits_remaining: number
         period_start: Date | null
         period_end: Date | null
     }
@@ -53,6 +64,7 @@ export type SubscriptionLimitFeature =
     | "refresh"
     | "sara"
     | "export"
+    | "credit"
 
 export type LimitCheckResponse = {
     feature: SubscriptionLimitFeature
@@ -61,4 +73,19 @@ export type LimitCheckResponse = {
     limit: number | string
     used: number
     reason?: string
+}
+
+export type PlanQuotaResponse = {
+    plan: Plan
+    limits: PlanLimits
+    usage: {
+        project_count: number
+        prompt_count: number
+        competitor_count: number
+    }
+    remaining: {
+        projects: number
+        prompts: number
+        competitors: number | "unlimited"
+    }
 }

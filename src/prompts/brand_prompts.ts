@@ -58,8 +58,8 @@ CRITICAL RULES:
    - "what's the top software for B2B market intelligence right now"
    - "i need a platform to consolidate all our scattered market data, any recommendations?"
 4. Examples of BAD prompts (DO NOT DO THIS):
-   - "What is RefractOne?" (Mentions the brand)
-   - "RefractOne vs OrbitShift AI" (Mentions brands)
+   - "What is PromptPulse?" (Mentions the brand)
+   - "PromptPulse vs OrbitShift AI" (Mentions brands)
    - "What methodologies should enterprises employ..." (Too formal/robotic)
 5. Keep the tone casual: use lowercase sometimes, first-person ("I need", "my team"), and direct questions.
 

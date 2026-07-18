@@ -30,11 +30,18 @@ export async function register(req: Request, res: Response): Promise<void> {
         res.status(201).json({ success: true, ...result })
     } catch (err: unknown) {
         const message = err instanceof Error ? err.message : 'Registration failed'
+        const isEmailDeliveryError = message.includes('Brevo email send failed')
         const status =
             message.includes('already exists') ? 409
                 : message.includes('work/business') ? 422
+                    : isEmailDeliveryError ? 502
                     : 500
-        res.status(status).json({ success: false, message })
+        res.status(status).json({
+            success: false,
+            message: isEmailDeliveryError
+                ? "We could not send your verification code right now. Please try again in a moment."
+                : message,
+        })
     }
 }
 

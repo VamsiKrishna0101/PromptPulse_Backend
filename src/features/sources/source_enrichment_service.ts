@@ -32,7 +32,9 @@ type EnrichedSource = {
     content_updated_at: Date
 }
 
-export async function enrichSource(source_id: string) {
+export async function enrichSource(source_id: string, options: {
+    ingest_sara?: boolean
+} = {}) {
     const source = await prisma.source.findUniqueOrThrow({
         where: { id: source_id },
         include: {
@@ -81,13 +83,15 @@ export async function enrichSource(source_id: string) {
         }
     })
 
-    void ingestSourceContentById(content.id, project.id).catch(error => {
-        console.warn("Sara source ingestion failed", {
-            source_url_content_id: content.id,
-            project_id: project.id,
-            error
+    if (options.ingest_sara !== false) {
+        await ingestSourceContentById(content.id, project.id).catch(error => {
+            console.warn("Sara source ingestion failed", {
+                source_url_content_id: content.id,
+                project_id: project.id,
+                error
+            })
         })
-    })
+    }
 
     return content
 }
@@ -234,14 +238,29 @@ function extractTitle(html: string) {
 
 function stripHtml(html: string) {
     return html
-        .replace(/<script[\s\S]*?<\/script>/gi, " ")
-        .replace(/<style[\s\S]*?<\/style>/gi, " ")
-        .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
-        .replace(/<[^>]+>/g, " ")
+        // Drop scripts, styles, noscripts entirely
+        .replace(/<script[\s\S]*?<\/script>/gi, "")
+        .replace(/<style[\s\S]*?<\/style>/gi, "")
+        .replace(/<noscript[\s\S]*?<\/noscript>/gi, "")
+        // Block-level elements → paragraph break
+        .replace(/<\/?(?:p|div|section|article|main|header|footer|aside|nav|h[1-6]|ul|ol|blockquote|pre|table|thead|tbody|tr|figure|figcaption)[^>]*>/gi, "\n\n")
+        // Inline line-breaks
+        .replace(/<br\s*\/?>/gi, "\n")
+        // List items → bullet
+        .replace(/<li[^>]*>/gi, "\n• ")
+        // Strip all remaining tags
+        .replace(/<[^>]+>/g, "")
 }
 
 function normalizeText(text: string) {
-    return decodeHtml(text).replace(/\s+/g, " ").trim()
+    return decodeHtml(text)
+        // Normalise spaces within each line (but keep newlines)
+        .split("\n")
+        .map(line => line.replace(/[ \t]+/g, " ").trim())
+        .join("\n")
+        // Collapse 3+ consecutive blank lines down to 2
+        .replace(/\n{3,}/g, "\n\n")
+        .trim()
 }
 
 function decodeHtml(value: string) {

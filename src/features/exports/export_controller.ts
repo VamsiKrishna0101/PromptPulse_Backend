@@ -1,7 +1,10 @@
 import { Request, Response } from "express"
 import type { AuthenticatedRequest } from "../../middleware/auth"
+import { spendCredits, refundCredits } from "../credits/credits_service"
 import { assertProjectAccess } from "../projects/project_access"
-import { createCsvExport, createExcelExport, createPdfExport, createGeoArticlePdf } from "./export_service"
+import { CREDIT_COSTS } from "../subscription/plan_config"
+import { canExport } from "../subscription/subscription_service"
+import { createExcelExport, createPdfExport, createGeoArticlePdf } from "./export_service"
 import type { ExportFilters, ExportResource } from "./export_types"
 
 const EXPORT_RESOURCES = new Set<ExportResource>([
@@ -21,33 +24,66 @@ export async function downloadCsvExportController(req: Request, res: Response): 
         const resource = getResource(req, res)
         if (!resource) return
 
+        const userId = (req as AuthenticatedRequest).user.id
         const format = getFormat(req)
         const filters = parseFilters(req.query)
 
-        await assertProjectAccess(project_id, (req as AuthenticatedRequest).user.id)
-
-        // ── PDF ───────────────────────────────────────────────────────────────
-        if (format === "pdf") {
-            const result = await createPdfExport({ project_id, resource, filters })
-            res.setHeader("Content-Type", "application/pdf")
-            res.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`)
-            res.status(200).send(result.content)
+        await assertProjectAccess(project_id, userId)
+        const exportAccess = await canExport(userId)
+        if (!exportAccess.allowed) {
+            res.status(402).json({ error: exportAccess.reason ?? "Exports are not included in this plan" })
             return
         }
 
-        // ── Excel (.xlsx) — the default "CSV" export ──────────────────────────
-        if (format === "xlsx" || format === "csv") {
-            const result = await createExcelExport({ project_id, resource, filters })
-            res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            res.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`)
-            res.status(200).send(result.content)
-            return
+        const cost = format === "pdf" ? CREDIT_COSTS.dashboard_export_pdf : CREDIT_COSTS.dashboard_export_xlsx
+        const action = format === "pdf" ? "dashboard_export_pdf" : "dashboard_export_xlsx"
+        const idempotencyKey = readIdempotencyKey(req)
+            ?? `export:${userId}:${project_id}:${resource}:${format}:${stableFiltersKey(filters)}:${Date.now()}`
+
+        await spendCredits({
+            userId,
+            amount: cost,
+            action,
+            description: `${resource} ${format.toUpperCase()} export`,
+            idempotencyKey,
+            metadata: { project_id, resource, format, filters },
+        })
+
+        try {
+            if (format === "pdf") {
+                const result = await createPdfExport({ project_id, resource, filters })
+                res.setHeader("Content-Type", "application/pdf")
+                res.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`)
+                res.status(200).send(result.content)
+                return
+            }
+
+            if (format === "xlsx" || format === "csv") {
+                const result = await createExcelExport({ project_id, resource, filters })
+                res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                res.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`)
+                res.status(200).send(result.content)
+                return
+            }
+        } catch (error) {
+            await refundCredits({
+                userId,
+                amount: cost,
+                action: "credit_refund",
+                description: `Refund for failed ${resource} ${format.toUpperCase()} export`,
+                idempotencyKey: `refund:${idempotencyKey}`,
+                metadata: { project_id, resource, format },
+            })
+            throw error
         }
 
-        res.status(400).json({ error: "Unsupported format" })
     } catch (error) {
         if (error instanceof Error && error.message === "PROJECT_NOT_FOUND") {
             res.status(404).json({ error: "Project not found" })
+            return
+        }
+        if (error instanceof Error && error.message.startsWith("Not enough credits")) {
+            res.status(402).json({ error: error.message })
             return
         }
         console.error("Export failed", error)
@@ -58,10 +94,13 @@ export async function downloadCsvExportController(req: Request, res: Response): 
 export async function exportGeoArticlePdfController(req: Request, res: Response) {
     try {
         const project_id = req.params.project_id
-        if (!project_id) {
+        if (!project_id || Array.isArray(project_id)) {
             res.status(400).json({ error: "Missing project_id" })
             return
         }
+
+        const userId = (req as AuthenticatedRequest).user.id
+        await assertProjectAccess(project_id, userId)
 
         const { brief, article } = req.body
         if (!brief || !article) {
@@ -69,12 +108,44 @@ export async function exportGeoArticlePdfController(req: Request, res: Response)
             return
         }
 
-        const pdf = await createGeoArticlePdf({ project_id, brief, article })
+        const cost = CREDIT_COSTS.geo_article_pdf
+        const idempotencyKey = readIdempotencyKey(req) ?? `geoarticle-pdf:${userId}:${project_id}:${Date.now()}`
+        await spendCredits({
+            userId,
+            amount: cost,
+            action: "geo_article_pdf",
+            description: "GEO article PDF export",
+            idempotencyKey,
+            metadata: { project_id },
+        })
+
+        let pdf: Awaited<ReturnType<typeof createGeoArticlePdf>>
+        try {
+            pdf = await createGeoArticlePdf({ project_id, brief, article })
+        } catch (error) {
+            await refundCredits({
+                userId,
+                amount: cost,
+                action: "credit_refund",
+                description: "Refund for failed GEO article PDF export",
+                idempotencyKey: `refund:${idempotencyKey}`,
+                metadata: { project_id },
+            })
+            throw error
+        }
 
         res.setHeader("Content-Type", "application/pdf")
         res.setHeader("Content-Disposition", `attachment; filename="${pdf.filename}"`)
         res.send(pdf.content)
     } catch (error) {
+        if (error instanceof Error && error.message === "PROJECT_NOT_FOUND") {
+            res.status(404).json({ error: "Project not found" })
+            return
+        }
+        if (error instanceof Error && error.message.startsWith("Not enough credits")) {
+            res.status(402).json({ error: error.message })
+            return
+        }
         console.error("[exportGeoArticlePdfController] Error:", error)
         res.status(500).json({ error: "Failed to generate GEO article PDF" })
     }
@@ -90,7 +161,13 @@ function getProjectId(req: Request, res: Response) {
 }
 
 function getResource(req: Request, res: Response): ExportResource | null {
-    const rawResource = req.params.resource?.replace(/\.(csv|pdf|xlsx)$/i, "")
+    const resourceParam = req.params.resource
+    if (!resourceParam || Array.isArray(resourceParam)) {
+        res.status(400).json({ error: "Unsupported export resource" })
+        return null
+    }
+
+    const rawResource = resourceParam.replace(/\.(csv|pdf|xlsx)$/i, "")
     if (!rawResource || !EXPORT_RESOURCES.has(rawResource as ExportResource)) {
         res.status(400).json({ error: "Unsupported export resource" })
         return null
@@ -99,10 +176,11 @@ function getResource(req: Request, res: Response): ExportResource | null {
 }
 
 function getFormat(req: Request): "csv" | "pdf" | "xlsx" {
-    const ext = req.params.resource?.split(".").pop()?.toLowerCase()
+    const resourceParam = Array.isArray(req.params.resource) ? "" : req.params.resource
+    const ext = resourceParam?.split(".").pop()?.toLowerCase()
     if (ext === "pdf") return "pdf"
     if (ext === "xlsx") return "xlsx"
-    return "csv"   // .csv → still routed to xlsx for better quality
+    return "csv"
 }
 
 function parseFilters(query: Request["query"]): ExportFilters {
@@ -127,4 +205,14 @@ function parsePositiveInt(value: unknown) {
     const parsed = Number.parseInt(value, 10)
     if (!Number.isFinite(parsed) || parsed <= 0) return undefined
     return parsed
+}
+
+function readIdempotencyKey(req: Request) {
+    const header = req.header("Idempotency-Key")
+    if (header?.trim()) return header.trim().slice(0, 180)
+    return undefined
+}
+
+function stableFiltersKey(filters: ExportFilters) {
+    return JSON.stringify(Object.entries(filters).sort(([a], [b]) => a.localeCompare(b)))
 }

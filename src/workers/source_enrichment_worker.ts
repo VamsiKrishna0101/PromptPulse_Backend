@@ -1,4 +1,4 @@
-import "dotenv/config"
+import "../lib/env"
 import { Worker } from "bullmq"
 import { getRedisConnectionOptions } from "../lib/redis"
 import prisma from "../lib/prisma"

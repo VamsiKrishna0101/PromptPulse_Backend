@@ -1,5 +1,13 @@
 import Redis from "ioredis"
 
+function getRedisTlsOptions(enabled: boolean) {
+    if (!enabled) return undefined
+
+    return {
+        rejectUnauthorized: process.env.REDIS_TLS_REJECT_UNAUTHORIZED === "true"
+    }
+}
+
 export function getRedisConnectionOptions() {
     if (process.env.REDIS_HOST) {
         return {
@@ -7,7 +15,7 @@ export function getRedisConnectionOptions() {
             port: Number(process.env.REDIS_PORT ?? 6379),
             username: process.env.REDIS_USERNAME || undefined,
             password: process.env.REDIS_PASSWORD || undefined,
-            tls: process.env.REDIS_TLS === "true" ? {} : undefined,
+            tls: getRedisTlsOptions(process.env.REDIS_TLS === "true"),
             maxRetriesPerRequest: null,
             enableReadyCheck: false
         }
@@ -20,7 +28,7 @@ export function getRedisConnectionOptions() {
         port: Number(url.port || 6379),
         username: url.username || undefined,
         password: url.password || undefined,
-        tls: url.protocol === "rediss:" ? {} : undefined,
+        tls: getRedisTlsOptions(url.protocol === "rediss:"),
         maxRetriesPerRequest: null,
         enableReadyCheck: false
     }

@@ -1,4 +1,5 @@
 import prisma from "../../lib/prisma"
+import { enrichSource } from "./source_enrichment_service"
 
 export async function getTopSources(project_id: string) {
     const chats = await prisma.chat.findMany({
@@ -118,6 +119,9 @@ export async function getUrlReport(project_id: string) {
         mentionedBrands: Set<string>
         snippet: string | null
         content_updated_at: Date | null
+        content_length: number
+        fetch_status: string | null
+        error_reason: string | null
     }>()
 
     for (const source of sources) {
@@ -134,15 +138,34 @@ export async function getUrlReport(project_id: string) {
             prompts: new Set<string>(),
             mentionedBrands: new Set<string>(),
             snippet: source.snippet ?? source.source_url_content?.snippet ?? null,
-            content_updated_at: source.source_url_content?.content_updated_at ?? null
+            content_updated_at: source.source_url_content?.content_updated_at ?? null,
+            content_length: source.source_url_content?.content_length ?? 0,
+            fetch_status: source.source_url_content?.fetch_status ?? null,
+            error_reason: source.source_url_content?.error_reason ?? null
         }
 
         existing.retrievals += 1
         if (source.is_cited) existing.citations += 1
         existing.prompts.add(source.chat.prompt.text)
+        if (!existing.snippet && source.source_url_content?.snippet) existing.snippet = source.source_url_content.snippet
+        if (!existing.content_updated_at && source.source_url_content?.content_updated_at) {
+            existing.content_updated_at = source.source_url_content.content_updated_at
+        }
+        if ((source.source_url_content?.content_length ?? 0) > existing.content_length) {
+            existing.content_length = source.source_url_content?.content_length ?? 0
+        }
+        if (!existing.fetch_status && source.source_url_content?.fetch_status) {
+            existing.fetch_status = source.source_url_content.fetch_status
+        }
+        if (!existing.error_reason && source.source_url_content?.error_reason) {
+            existing.error_reason = source.source_url_content.error_reason
+        }
 
         const sourceBrands = Array.isArray(source.mentioned_brands) ? source.mentioned_brands : []
-        for (const brand of sourceBrands) {
+        const contentBrands = Array.isArray(source.source_url_content?.mentioned_brands)
+            ? source.source_url_content.mentioned_brands
+            : []
+        for (const brand of [...sourceBrands, ...contentBrands]) {
             if (typeof brand === "string") existing.mentionedBrands.add(brand)
         }
 
@@ -163,28 +186,110 @@ export async function getUrlReport(project_id: string) {
         prompts: Array.from(item.prompts),
         mentioned_brands: Array.from(item.mentionedBrands),
         snippet: item.snippet,
-        content_updated_at: item.content_updated_at
+        content_updated_at: item.content_updated_at,
+        content_length: item.content_length,
+        fetch_status: item.fetch_status,
+        error_reason: item.error_reason
     })).sort((a, b) => b.retrievals - a.retrievals)
 }
 
 export async function getUrlContent(project_id: string, url: string) {
-    const source = await prisma.source.findFirst({
-        where: {
-            url,
-            chat: {
-                run: { project_id }
-            }
-        },
-        include: { source_url_content: true }
-    })
+    const source = await findProjectSourceByUrl(project_id, url)
 
     if (!source) return null
 
     if (source.source_url_content) return source.source_url_content
 
-    return prisma.sourceUrlContent.findUnique({
-        where: { url }
+    const matchedContent = await findExistingContentByUrl(source.url)
+    if (matchedContent) {
+        await prisma.source.updateMany({
+            where: { url: source.url },
+            data: {
+                source_url_content_id: matchedContent.id,
+                title: matchedContent.title,
+                snippet: matchedContent.snippet,
+                source_type: matchedContent.source_type,
+                url_type: matchedContent.url_type,
+                platform: matchedContent.platform,
+                subreddit: matchedContent.subreddit,
+                mentioned_brands: matchedContent.mentioned_brands
+            }
+        })
+        return matchedContent
+    }
+
+    // Details drawer should be useful even if the background worker has not reached this URL yet.
+    return enrichSource(source.id, { ingest_sara: true })
+}
+
+async function findProjectSourceByUrl(project_id: string, url: string) {
+    const exact = await prisma.source.findFirst({
+        where: {
+            url,
+            chat: { run: { project_id } }
+        },
+        include: { source_url_content: true },
+        orderBy: { created_at: "desc" }
     })
+    if (exact) return exact
+
+    const targetKey = canonicalUrlKey(url)
+    const domain = safeDomain(url)
+    const candidates = await prisma.source.findMany({
+        where: {
+            domain,
+            chat: { run: { project_id } }
+        },
+        include: { source_url_content: true },
+        orderBy: { created_at: "desc" },
+        take: 100
+    })
+
+    return candidates.find(source => canonicalUrlKey(source.url) === targetKey) ?? null
+}
+
+async function findExistingContentByUrl(url: string) {
+    const exact = await prisma.sourceUrlContent.findUnique({ where: { url } })
+    if (exact) return exact
+
+    const targetKey = canonicalUrlKey(url)
+    const domain = safeDomain(url)
+    const candidates = await prisma.sourceUrlContent.findMany({
+        where: { domain },
+        orderBy: { updated_at: "desc" },
+        take: 100
+    })
+
+    return candidates.find(content => canonicalUrlKey(content.url) === targetKey) ?? null
+}
+
+function canonicalUrlKey(url: string) {
+    try {
+        const parsed = new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`)
+        parsed.hash = ""
+        for (const key of Array.from(parsed.searchParams.keys())) {
+            if (
+                key.toLowerCase().startsWith("utm_") ||
+                ["fbclid", "gclid", "msclkid"].includes(key.toLowerCase())
+            ) {
+                parsed.searchParams.delete(key)
+            }
+        }
+        const host = parsed.hostname.replace(/^www\./, "").toLowerCase()
+        const path = parsed.pathname.replace(/\/+$/, "") || "/"
+        const query = parsed.searchParams.toString()
+        return `${host}${path}${query ? `?${query}` : ""}`
+    } catch {
+        return url.toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/+$/, "")
+    }
+}
+
+function safeDomain(url: string) {
+    try {
+        return new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`).hostname.replace(/^www\./, "").toLowerCase()
+    } catch {
+        return url.toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0]
+    }
 }
 
 export async function getSourceTrend(project_id: string) {

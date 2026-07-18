@@ -45,12 +45,17 @@ export const addCompetitorController = async (req: Request, res: Response): Prom
             res.status(400).json({ error: 'name is required' })
             return
         }
-        await assertProjectAccess(project_id, (req as AuthenticatedRequest).user.id)
-        const competitor = await addCompetitor({ project_id, name, url })
+        const userId = (req as AuthenticatedRequest).user.id
+        await assertProjectAccess(project_id, userId)
+        const competitor = await addCompetitor({ project_id, name, url, user_id: userId })
         res.status(201).json(competitor)
     } catch (error) {
         if (error instanceof Error && error.message === 'PROJECT_NOT_FOUND') {
             res.status(404).json({ error: 'Project not found' })
+            return
+        }
+        if (error instanceof Error && error.message.toLowerCase().includes('competitor')) {
+            res.status(403).json({ error: error.message })
             return
         }
         res.status(500).json({ error: 'Failed to add competitor' })

@@ -9,6 +9,7 @@ import {
     createSubscriptionController,
     getMyPlanController,
     getPlanLimitsController,
+    getPlanQuotaController,
     refreshPlanUsageController,
 } from "./subscription_controller"
 
@@ -17,6 +18,7 @@ const router = Router()
 router.post("/create", createSubscriptionController)
 router.get("/me", getMyPlanController)
 router.get("/limits", getPlanLimitsController)
+router.get("/quota", getPlanQuotaController)
 router.get("/can/create-project", canCreateProjectController)
 router.get("/can/create-prompt", canCreatePromptController)
 router.get("/can/add-competitor", canAddCompetitorController)

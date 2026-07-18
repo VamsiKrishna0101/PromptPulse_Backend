@@ -1,6 +1,7 @@
 export type OpportunityType = "MISSING" | "OUTRANKED" | "SOURCE_GAP" | "SENTIMENT_GAP"
 export type OpportunityImpact = "HIGH" | "MEDIUM" | "LOW"
 export type OpportunityEffort = "LOW" | "MEDIUM" | "HIGH"
+export type OpportunityConfidence = "HIGH" | "MEDIUM" | "LOW" | "NEEDS_REVIEW"
 
 export interface OpportunitySource {
     domain: string
@@ -38,6 +39,10 @@ export interface OpportunityItem {
     impact: OpportunityImpact
     effort: OpportunityEffort
     evidence_count: number
+    clean_evidence_count: number
+    confidence: OpportunityConfidence
+    confidence_reasons: string[]
+    prompt_intent_warning: string | null
     top_sources: OpportunitySource[]
     content_gap: ContentGapPlan
     next_step: string

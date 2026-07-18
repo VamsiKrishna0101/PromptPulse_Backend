@@ -3,7 +3,8 @@ import { generateBrandPrompts, summarizeBrandResearch } from "../llm/gemini_serv
 import prisma from "../../lib/prisma";
 import { crawlBrandWebsite } from "./brand_crawler_service";
 import type { BrandResearchInput, PromptInput, CreateProjectInput } from "./onboarding_types";
-import { getPromptLimitForPlan } from "./plan_limits";
+import { assertCanAddCompetitors, assertCanCreateProjectWithPrompts } from "../subscription/subscription_service";
+import { getGeoCountryByName } from "../geo/countries";
 
 export async function researchbrand(input: BrandResearchInput) {
     const { brand_url, brand_name } = input
@@ -60,16 +61,19 @@ export async function createProject(input: CreateProjectInput) {
     try {
         const user = await prisma.user.findUnique({
             where: { id: user_id },
-            select: { plan: true },
+            select: { id: true },
         })
 
         if (!user) {
             throw new Error('User not found')
         }
 
-        const promptLimit = getPromptLimitForPlan(user.plan)
-        if (prompts.length > promptLimit) {
-            throw new Error(`Your ${user.plan.toLowerCase()} plan can track up to ${promptLimit} prompts.`)
+        await assertCanCreateProjectWithPrompts(user_id, prompts.length)
+        await assertCanAddCompetitors(user_id, competitors.length)
+
+        const country = getGeoCountryByName(brand_location)
+        if (!country) {
+            throw new Error('Please select a supported primary market')
         }
 
         const project = await prisma.project.create({
@@ -77,7 +81,7 @@ export async function createProject(input: CreateProjectInput) {
                 user_id,
                 brand_name,
                 brand_url,
-                brand_location,
+                brand_location: country.name,
                 competitors: {
                     create: competitors.map(c => ({ name: c }))
                 },

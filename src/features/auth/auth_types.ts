@@ -12,9 +12,11 @@ export type RegisterResponse = {
         account_type: string
         role: string
         plan: string
+        effective_plan?: string
+        is_verified: boolean
     }
-    accessToken: string
-    refreshToken: string
+    accessToken?: string
+    refreshToken?: string
 }
 
 export type LoginInput = {
@@ -30,6 +32,7 @@ export type LoginResponse = {
         account_type: string,
         role: string,
         plan: string,
+        effective_plan?: string,
         is_verified: boolean
 
     },

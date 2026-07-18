@@ -2,7 +2,7 @@ import "dotenv/config"
 import cron from "node-cron"
 import { enqueueDailyRuns } from "../features/scraping/scrape_orchestration_service"
 
-const expression = process.env.DAILY_SCRAPE_CRON ?? "0 9 * * *"
+const expression = process.env.DAILY_SCRAPE_CRON ?? "0 0 * * *"
 const timezone = process.env.DAILY_SCRAPE_TIMEZONE ?? "Asia/Kolkata"
 
 cron.schedule(expression, async () => {
