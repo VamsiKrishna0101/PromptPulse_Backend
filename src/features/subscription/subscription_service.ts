@@ -1,4 +1,4 @@
-import Stripe from "stripe"
+import type Stripe from "stripe"
 import { Plan, SubscriptionStatus } from "@prisma/client"
 import prisma from "../../lib/prisma"
 import type {
@@ -10,41 +10,12 @@ import type {
     PaidPlan,
     PlanLimits,
     SubscriptionLimitFeature,
+    BillingInterval,
 } from "./subscription_types"
 import { getAccessPeriod, getEffectivePlanAccess } from "./entitlements"
 import { getCreditBalance } from "../credits/credits_service"
 import { getRefreshWindowStart } from "../refresh/refresh_window"
-
-let stripeClient: Stripe | null = null
-const TRIAL_DAYS = 14
-const MS_PER_DAY = 24 * 60 * 60 * 1000
-
-function getStripeClient(): Stripe {
-    if (stripeClient) return stripeClient
-
-    const stripeSecretKey = process.env.STRIPE_SECRET_KEY
-    if (!stripeSecretKey) {
-        throw new Error("STRIPE_SECRET_KEY is required")
-    }
-
-    stripeClient = new Stripe(stripeSecretKey)
-    return stripeClient
-}
-
-const PLAN_CONFIG: Record<PaidPlan, { amount_cents: number; price_env_key: string }> = {
-    STARTER: {
-        amount_cents: 2900,
-        price_env_key: "STRIPE_STARTER_PRICE_ID",
-    },
-    GROWTH: {
-        amount_cents: 5900,
-        price_env_key: "STRIPE_GROWTH_PRICE_ID",
-    },
-    PRO: {
-        amount_cents: 12900,
-        price_env_key: "STRIPE_PRO_PRICE_ID",
-    },
-}
+import { getStripeClient, getStripeId, getStripePrice } from "./stripe_config"
 
 const ACCESS_STATUSES: SubscriptionStatus[] = [
     SubscriptionStatus.ACTIVE,
@@ -58,14 +29,6 @@ function assertPaidPlan(plan: unknown): asserts plan is PaidPlan {
     }
 }
 
-function getPriceId(plan: PaidPlan): string {
-    const priceId = process.env[PLAN_CONFIG[plan].price_env_key]
-    if (!priceId) {
-        throw new Error(`${PLAN_CONFIG[plan].price_env_key} is required`)
-    }
-    return priceId
-}
-
 function mapStripeStatus(status: Stripe.Subscription.Status): SubscriptionStatus {
     if (status === "trialing") return SubscriptionStatus.TRIALING
     if (status === "active") return SubscriptionStatus.ACTIVE
@@ -76,15 +39,6 @@ function mapStripeStatus(status: Stripe.Subscription.Status): SubscriptionStatus
 
 function unixToDate(value?: number | null): Date | null {
     return value ? new Date(value * 1000) : null
-}
-
-function addTrialDays(date: Date): Date {
-    return new Date(date.getTime() + TRIAL_DAYS * MS_PER_DAY)
-}
-
-function getStripeId(value: string | { id: string } | null | undefined): string | null {
-    if (!value) return null
-    return typeof value === "string" ? value : value.id
 }
 
 function toPaidPlan(plan: string | null | undefined): PaidPlan {
@@ -123,7 +77,13 @@ function formatLimit(limit: number | "unlimited") {
 async function getLiveUsageCounts(userId: string) {
     const [projectCount, promptCount, competitorCount] = await Promise.all([
         prisma.project.count({ where: { user_id: userId } }),
-        prisma.prompt.count({ where: { project: { user_id: userId } } }),
+        prisma.prompt.count({
+            where: {
+                project: { user_id: userId },
+                is_active: true,
+                status: "ACTIVE",
+            },
+        }),
         prisma.competitor.count({ where: { project: { user_id: userId } } }),
     ])
 
@@ -140,7 +100,9 @@ async function getCurrentPeriod(userId: string): Promise<{ start: Date; end: Dat
 
 export async function createSubscription(input: CreateSubscriptionInput): Promise<CreateSubscriptionResponse> {
     assertPaidPlan(input.plan)
+    if (input.billing_interval !== "monthly" && input.billing_interval !== "annual") throw new Error("Invalid billing interval")
     const stripe = getStripeClient()
+    const stripePrice = getStripePrice(input.plan, input.billing_interval)
 
     const user = await prisma.user.findUnique({
         where: { id: input.user_id },
@@ -185,42 +147,47 @@ export async function createSubscription(input: CreateSubscriptionInput): Promis
     ).id
 
     const frontendUrl = process.env.FRONTEND_URL ?? "http://localhost:5173"
+    const automaticTax = process.env.STRIPE_AUTOMATIC_TAX_ENABLED === "true"
     const session = await stripe.checkout.sessions.create({
         mode: "subscription",
         customer: customerId,
         client_reference_id: user.id,
         line_items: [
             {
-                price: getPriceId(input.plan),
+                price: stripePrice.price_id,
                 quantity: 1,
             },
         ],
-        success_url: process.env.STRIPE_CHECKOUT_SUCCESS_URL ?? `${frontendUrl}/dashboard?subscription=success`,
-        cancel_url: process.env.STRIPE_CHECKOUT_CANCEL_URL ?? `${frontendUrl}/dashboard?subscription=cancelled`,
+        success_url: process.env.STRIPE_CHECKOUT_SUCCESS_URL ?? `${frontendUrl}/subscription?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: process.env.STRIPE_CHECKOUT_CANCEL_URL ?? `${frontendUrl}/subscription?checkout=cancelled`,
+        billing_address_collection: "required",
+        customer_update: { address: "auto", name: "auto" },
+        tax_id_collection: { enabled: true },
+        automatic_tax: { enabled: automaticTax },
         metadata: {
             user_id: user.id,
             plan: input.plan,
+            billing_interval: input.billing_interval,
         },
         subscription_data: {
-            trial_period_days: TRIAL_DAYS,
             metadata: {
                 user_id: user.id,
                 plan: input.plan,
+                billing_interval: input.billing_interval,
             },
         },
         allow_promotion_codes: true,
-    })
+    }, input.request_id ? { idempotencyKey: `checkout:${user.id}:${input.request_id}` } : undefined)
 
-    const trialStartsAt = new Date()
     await prisma.subscription.create({
         data: {
             user_id: user.id,
             plan: input.plan,
             status: SubscriptionStatus.INCOMPLETE,
-            amount_cents: PLAN_CONFIG[input.plan].amount_cents,
+            amount_cents: stripePrice.amount_cents,
             stripe_customer_id: customerId,
-            trial_starts_at: trialStartsAt,
-            trial_ends_at: addTrialDays(trialStartsAt),
+            stripe_checkout_session_id: session.id,
+            billing_interval: input.billing_interval,
         },
     })
 
@@ -232,6 +199,7 @@ export async function createSubscription(input: CreateSubscriptionInput): Promis
         checkout_session_id: session.id,
         checkout_url: session.url,
         plan: input.plan,
+        billing_interval: input.billing_interval,
     }
 }
 
@@ -245,6 +213,8 @@ export async function syncSubscriptionFromStripe(stripeSubscription: Stripe.Subs
     const stripeCustomerId = getStripeId(stripeSubscription.customer)
     const status = mapStripeStatus(stripeSubscription.status)
     const plan = toPaidPlan(stripeSubscription.metadata?.plan)
+    const billingInterval: BillingInterval = stripeSubscription.metadata?.billing_interval === "annual" ? "annual" : "monthly"
+    const stripePrice = getStripePrice(plan, billingInterval)
     const metadataUserId = stripeSubscription.metadata?.user_id
 
     const existingSubscription = await prisma.subscription.findFirst({
@@ -269,7 +239,8 @@ export async function syncSubscriptionFromStripe(stripeSubscription: Stripe.Subs
             data: {
                 plan,
                 status,
-                amount_cents: PLAN_CONFIG[plan].amount_cents,
+                amount_cents: stripePrice.amount_cents,
+                billing_interval: billingInterval,
                 stripe_customer_id: stripeCustomerId,
                 stripe_subscription_id: stripeSubscriptionId,
                 current_period_start: unixToDate(subscriptionWithPeriod.current_period_start),
@@ -284,7 +255,8 @@ export async function syncSubscriptionFromStripe(stripeSubscription: Stripe.Subs
                 user_id: userId,
                 plan,
                 status,
-                amount_cents: PLAN_CONFIG[plan].amount_cents,
+                amount_cents: stripePrice.amount_cents,
+                billing_interval: billingInterval,
                 stripe_customer_id: stripeCustomerId,
                 stripe_subscription_id: stripeSubscriptionId,
                 current_period_start: unixToDate(subscriptionWithPeriod.current_period_start),
@@ -307,47 +279,25 @@ export async function syncSubscriptionFromStripe(stripeSubscription: Stripe.Subs
     return subscription
 }
 
-export async function handleStripeWebhook(rawBody: Buffer | string, signature: string | undefined) {
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
-    if (!webhookSecret) {
-        throw new Error("STRIPE_WEBHOOK_SECRET is required")
+export async function createBillingPortalSession(userId: string) {
+    const subscription = await prisma.subscription.findFirst({ where: { user_id: userId, stripe_customer_id: { not: null } }, orderBy: { created_at: "desc" } })
+    if (!subscription?.stripe_customer_id) throw new Error("No Stripe billing account found")
+    const frontendUrl = process.env.FRONTEND_URL ?? "http://localhost:5173"
+    const session = await getStripeClient().billingPortal.sessions.create({ customer: subscription.stripe_customer_id, return_url: `${frontendUrl}/subscription` })
+    return { url: session.url }
+}
+
+export async function verifyCheckoutSession(userId: string, sessionId: string) {
+    const session = await getStripeClient().checkout.sessions.retrieve(sessionId)
+    if (session.client_reference_id !== userId && session.metadata?.user_id !== userId) throw new Error("Checkout session not found")
+    const subscriptionId = getStripeId(session.subscription)
+    if (subscriptionId) await syncSubscriptionFromStripe(await getStripeClient().subscriptions.retrieve(subscriptionId))
+    return {
+        status: session.status,
+        payment_status: session.payment_status,
+        plan: session.metadata?.plan ?? null,
+        billing_interval: session.metadata?.billing_interval ?? null,
     }
-    if (!signature) {
-        throw new Error("Missing Stripe signature")
-    }
-
-    const stripe = getStripeClient()
-    const event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret)
-
-    if (event.type === "checkout.session.completed") {
-        const session = event.data.object as Stripe.Checkout.Session
-        const subscriptionId = getStripeId(session.subscription)
-
-        if (subscriptionId) {
-            const subscription = await stripe.subscriptions.retrieve(subscriptionId)
-            await syncSubscriptionFromStripe(subscription)
-        }
-    }
-
-    if (
-        event.type === "customer.subscription.created" ||
-        event.type === "customer.subscription.updated" ||
-        event.type === "customer.subscription.deleted"
-    ) {
-        await syncSubscriptionFromStripe(event.data.object as Stripe.Subscription)
-    }
-
-    if (event.type === "invoice.payment_succeeded" || event.type === "invoice.payment_failed") {
-        const invoice = event.data.object as Stripe.Invoice & { subscription?: string | { id: string } | null }
-        const subscriptionId = getStripeId(invoice.subscription)
-
-        if (subscriptionId) {
-            const subscription = await stripe.subscriptions.retrieve(subscriptionId)
-            await syncSubscriptionFromStripe(subscription)
-        }
-    }
-
-    return { received: true, event_type: event.type }
 }
 
 export async function getUserPlan(userId: string): Promise<Plan> {

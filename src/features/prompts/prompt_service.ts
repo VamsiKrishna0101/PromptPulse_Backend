@@ -11,6 +11,11 @@ export interface GetPromptsInput {
     topic?: string
     model?: string
     days?: number
+    country?: string
+    intent?: string
+    tag?: string
+    mentioned?: boolean
+    cited?: boolean
 }
 
 export type TopicInput = {
@@ -33,11 +38,13 @@ export type PromptTopic = {
 }
 
 export async function getPromptsWithStats(input: GetPromptsInput) {
-    const { project_id, status, topic, model, days } = input
+    const { project_id, status, topic, model, days, country, intent, tag, mentioned, cited } = input
 
     const promptWhere: any = { project_id }
     if (status) promptWhere.status = status
     if (topic) promptWhere.topic = topic
+    if (intent) promptWhere.type = intent
+    if (tag) promptWhere.tags = { has: tag }
 
     const prompts = await prisma.prompt.findMany({
         where: promptWhere,
@@ -46,6 +53,10 @@ export async function getPromptsWithStats(input: GetPromptsInput) {
                 where: {
                     ...(days ? { created_at: { gte: new Date(Date.now() - days * 86400000) } } : {}),
                     ...(model ? { ai_model: { contains: model, mode: 'insensitive' } } : {}),
+                    ...(country ? { OR: [{ geo_country_code: country }, { geo_country_name: { equals: country, mode: 'insensitive' } }] } : {}),
+                    ...(typeof mentioned === 'boolean' ? { brand_mentioned: mentioned } : {}),
+                    ...(cited === true ? { sources: { some: { is_cited: true } } } : {}),
+                    ...(cited === false ? { sources: { none: { is_cited: true } } } : {}),
                 },
                 include: {
                     brand_mentions: true,
@@ -115,14 +126,14 @@ export async function getPromptsWithStats(input: GetPromptsInput) {
 export async function activatePrompt(prompt_id: string) {
     return prisma.prompt.update({
         where: { id: prompt_id },
-        data: { status: 'ACTIVE' }
+        data: { status: 'ACTIVE', is_active: true }
     })
 }
 
 export async function deactivatePrompt(prompt_id: string) {
     return prisma.prompt.update({
         where: { id: prompt_id },
-        data: { status: 'INACTIVE' }
+        data: { status: 'INACTIVE', is_active: false }
     })
 }
 

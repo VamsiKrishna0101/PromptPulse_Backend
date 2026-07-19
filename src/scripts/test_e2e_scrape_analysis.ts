@@ -3,9 +3,9 @@ import { analyzeResponse } from "../features/llm/gemini_service"
 import { hasBedrockGateway } from "../features/llm/bedrock_gateway_service"
 import { runUiScrape, type UiEngine } from "../features/scraping/scraper_api_client"
 
-const supportedEngines = ["chatgpt", "gemini", "perplexity", "google_ai_overview", "google_ai_mode", "copilot"] as const
+const supportedEngines = ["chatgpt", "gemini", "perplexity", "google_ai_mode", "copilot"] as const
 const requestedEngine = (process.env.E2E_TEST_ENGINE ?? "gemini").trim().toLowerCase()
-const engine: UiEngine = supportedEngines.includes(requestedEngine as UiEngine)
+const engine: UiEngine = (supportedEngines as readonly string[]).includes(requestedEngine)
     ? requestedEngine as UiEngine
     : "gemini"
 

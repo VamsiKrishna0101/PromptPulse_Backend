@@ -59,6 +59,7 @@ export async function triggerQueuedBrightDataBatches(options: {
         where: {
             status: ScrapeJobStatus.QUEUED,
             bright_data_batch_item: null,
+            engine: { not: Engine.GOOGLE_AI_OVERVIEW },
         },
         include: { prompt: true },
         orderBy: { created_at: "asc" },
@@ -316,7 +317,6 @@ async function completeBatchFromRecords(batch: BrightDataBatchWithItems, records
                         raw_text: result.raw_text,
                         citations: result.citations,
                         screenshot_path: result.screenshot_path,
-                        retry_count: result.retry_count ?? 0,
                         error_reason: result.error_reason,
                         completed_at: new Date(),
                     },

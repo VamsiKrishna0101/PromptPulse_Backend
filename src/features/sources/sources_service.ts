@@ -1,9 +1,11 @@
 import prisma from "../../lib/prisma"
 import { enrichSource } from "./source_enrichment_service"
+import { buildChatWhere } from "../dashboard/dashboard_service"
+import type { DashboardFilters } from "../dashboard/dashboard_service"
 
-export async function getTopSources(project_id: string) {
+export async function getTopSources(project_id: string, filters: DashboardFilters = {}) {
     const chats = await prisma.chat.findMany({
-        where: { run: { project_id } },
+        where: { ...buildChatWhere(project_id, filters), run: { project_id } },
         include: { sources: true }
     })
 
@@ -40,9 +42,9 @@ export async function getTopSources(project_id: string) {
     return topSources
 }
 
-export async function getDomainReport(project_id: string) {
+export async function getDomainReport(project_id: string, filters: DashboardFilters = {}) {
     const chats = await prisma.chat.findMany({
-        where: { run: { project_id } },
+        where: { ...buildChatWhere(project_id, filters), run: { project_id } },
         include: { sources: true }
     })
 
@@ -90,9 +92,9 @@ export async function getDomainReport(project_id: string) {
     }).sort((a, b) => b.retrieval_rate - a.retrieval_rate)
 }
 
-export async function getUrlReport(project_id: string) {
+export async function getUrlReport(project_id: string, filters: DashboardFilters = {}) {
     const sources = await prisma.source.findMany({
-        where: { chat: { run: { project_id } } },
+        where: { chat: { ...buildChatWhere(project_id, filters), run: { project_id } } },
         include: {
             source_url_content: true,
             chat: {

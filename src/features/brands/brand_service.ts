@@ -2,6 +2,7 @@ import prisma from "../../lib/prisma"
 import type { AddCompetitorInput } from "./brand_types"
 import { buildChatWhere, type DashboardFilters } from "../dashboard/dashboard_service"
 import { assertCanAddCompetitor } from "../subscription/subscription_service"
+import { sameBrandEntity, sanitizeDiscoveredBrandName } from "./brand_entity_policy"
 
 type ChatWithMentions = Awaited<ReturnType<typeof loadBrandChats>>[number]
 
@@ -53,12 +54,19 @@ async function loadPreviousBrandChats(project_id: string, filters?: DashboardFil
 
 function aggregateBrandMap(chats: ChatWithMentions[]) {
     const totalChats = chats.length
-    const brandMap = new Map<string, { count: number, totalPosition: number, totalSentiment: number, sentimentCount: number }>()
+    const brandMap = new Map<string, { name: string, count: number, totalPosition: number, totalSentiment: number, sentimentCount: number }>()
 
     for (const chat of chats) {
+        const seenInChat = new Set<string>()
         for (const mention of chat.brand_mentions) {
-            const existing = brandMap.get(mention.brand_name) || { count: 0, totalPosition: 0, totalSentiment: 0, sentimentCount: 0 }
-            brandMap.set(mention.brand_name, {
+            const name = sanitizeDiscoveredBrandName(mention.brand_name)
+            if (!name) continue
+            const key = name.toLowerCase()
+            if (seenInChat.has(key)) continue
+            seenInChat.add(key)
+            const existing = brandMap.get(key) || { name, count: 0, totalPosition: 0, totalSentiment: 0, sentimentCount: 0 }
+            brandMap.set(key, {
+                name: existing.name,
                 count: existing.count + 1,
                 totalPosition: existing.totalPosition + (mention.position ?? 0),
                 totalSentiment: existing.totalSentiment + (mention.sentiment_score ?? 0),
@@ -70,9 +78,22 @@ function aggregateBrandMap(chats: ChatWithMentions[]) {
     return { totalChats, brandMap }
 }
 
+function mentionsForBrand(name: string, chats: ChatWithMentions[]) {
+    return chats.flatMap(chat => {
+        const matches = chat.brand_mentions.filter(mention => sameBrandEntity(mention.brand_name, name))
+        if (matches.length === 0) return []
+
+        return [matches.reduce((best, mention) => {
+            if (best.position === null) return mention
+            if (mention.position === null) return best
+            return mention.position < best.position ? mention : best
+        })]
+    })
+}
+
 function brandStats(name: string, chats: ChatWithMentions[]) {
     const totalChats = chats.length
-    const mentions = chats.flatMap(c => c.brand_mentions.filter(m => m.brand_name.toLowerCase() === name.toLowerCase()))
+    const mentions = mentionsForBrand(name, chats)
     const sentimentMentions = mentions.filter(m => m.sentiment_score !== null)
 
     return {
@@ -104,8 +125,8 @@ export async function getDiscoveredBrands(project_id: string, filters?: Dashboar
     const { brandMap } = aggregateBrandMap(chats)
     const previousChats = await loadPreviousBrandChats(project_id, filters, chats)
 
-    return Array.from(brandMap.entries()).map(([name, data]) => ({
-        brand_name: name,
+    return Array.from(brandMap.values()).map(data => ({
+        brand_name: data.name,
         visibility: (data.count / totalChats) * 100,
         avg_position: data.count > 0 ? data.totalPosition / data.count : null,
         avg_sentiment: data.sentimentCount > 0 ? data.totalSentiment / data.sentimentCount : null,
@@ -145,9 +166,7 @@ export async function getTrackedCompetitors(project_id: string, filters?: Dashbo
     })
 
     return tracked.map(competitor => {
-        const allMentions = chats.flatMap(c =>
-            c.brand_mentions.filter(m => m.brand_name.toLowerCase() === competitor.name.toLowerCase())
-        )
+        const allMentions = mentionsForBrand(competitor.name, chats)
 
         const mentionCount = allMentions.length
         const sentimentMentions = allMentions.filter(m => m.sentiment_score !== null)

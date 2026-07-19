@@ -44,7 +44,8 @@ export async function getUserProjects(user_id: string) {
                             status: true,
                             prompt_id: true,
                             completed_at: true,
-                            error_reason: true
+                            error_reason: true,
+                            retry_count: true
                         },
                         orderBy: { created_at: "asc" }
                     }

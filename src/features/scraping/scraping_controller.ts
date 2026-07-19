@@ -4,6 +4,7 @@ import { enqueueProjectRun, getScrapeRun } from "./scrape_orchestration_service"
 import { assertProjectAccess } from "../projects/project_access"
 import type { AuthenticatedRequest } from "../../middleware/auth"
 import { canRunRefresh } from "../subscription/subscription_service"
+import { isActiveScrapeEngine } from "./scrape_engine_policy"
 
 export const enqueueProjectRunController = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -25,6 +26,16 @@ export const enqueueProjectRunController = async (req: Request, res: Response): 
         const parsedEngines = Array.isArray(engines)
             ? engines.map((engine: string) => engine.toUpperCase()).filter((engine: string) => engine in Engine) as Engine[]
             : undefined
+
+        if (Array.isArray(engines) && parsedEngines?.length !== engines.length) {
+            res.status(400).json({ error: "One or more scrape engines are invalid." })
+            return
+        }
+
+        if (parsedEngines?.some(engine => !isActiveScrapeEngine(engine))) {
+            res.status(400).json({ error: "Google AI Overview is no longer a supported scrape engine. Use Google AI Mode instead." })
+            return
+        }
 
         const result = await enqueueProjectRun({
             project_id,

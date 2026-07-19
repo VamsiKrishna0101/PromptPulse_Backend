@@ -1,6 +1,7 @@
 import type { Plan } from "@prisma/client"
 
 export type PaidPlan = Exclude<Plan, "FREE">
+export type BillingInterval = "monthly" | "annual"
 
 export type PlanLimits = {
     projects: number
@@ -15,12 +16,15 @@ export type PlanLimits = {
 export type CreateSubscriptionInput = {
     user_id: string
     plan: PaidPlan
+    billing_interval: BillingInterval
+    request_id?: string
 }
 
 export type CreateSubscriptionResponse = {
     checkout_session_id: string
     checkout_url: string
     plan: PaidPlan
+    billing_interval: BillingInterval
 }
 
 export type MyPlanResponse = {

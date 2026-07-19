@@ -2,6 +2,20 @@ import { Request, Response } from 'express'
 import { getDomainReport, getSourceGaps, getSourceTrend, getTopSources, getUrlContent, getUrlReport } from './sources_service'
 import { assertProjectAccess } from '../projects/project_access'
 import type { AuthenticatedRequest } from '../../middleware/auth'
+import type { DashboardFilters } from '../dashboard/dashboard_service'
+
+function parseFilters(query: Request['query']): DashboardFilters {
+    const filters: DashboardFilters = {}
+    if (query.days) filters.days = parseInt(query.days as string, 10)
+    if (query.model && query.model !== 'all') filters.model = query.model as string
+    if (query.topic && query.topic !== 'all') filters.topic = query.topic as string
+    if (query.tag && query.tag !== 'all') filters.tag = query.tag as string
+    if (query.country && query.country !== 'all') filters.country = query.country as string
+    if (query.intent && query.intent !== 'all') filters.intent = query.intent as string
+    if (query.mentioned === 'true' || query.mentioned === 'false') filters.mentioned = query.mentioned === 'true'
+    if (query.cited === 'true' || query.cited === 'false') filters.cited = query.cited === 'true'
+    return filters
+}
 
 export const getTopSourcesController = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -13,7 +27,7 @@ export const getTopSourcesController = async (req: Request, res: Response): Prom
 
         await assertProjectAccess(project_id, (req as AuthenticatedRequest).user.id)
         
-        const topSources = await getTopSources(project_id)
+        const topSources = await getTopSources(project_id, parseFilters(req.query))
         res.status(200).json(topSources)
     } catch (error) {
         if (error instanceof Error && error.message === 'PROJECT_NOT_FOUND') {
@@ -29,7 +43,7 @@ export const getDomainReportController = async (req: Request, res: Response): Pr
         const project_id = await getOwnedProjectId(req, res)
         if (!project_id) return
 
-        res.status(200).json(await getDomainReport(project_id))
+        res.status(200).json(await getDomainReport(project_id, parseFilters(req.query)))
     } catch (error) {
         handleSourceError(error, res, 'Failed to retrieve domain report')
     }
@@ -40,7 +54,7 @@ export const getUrlReportController = async (req: Request, res: Response): Promi
         const project_id = await getOwnedProjectId(req, res)
         if (!project_id) return
 
-        res.status(200).json(await getUrlReport(project_id))
+        res.status(200).json(await getUrlReport(project_id, parseFilters(req.query)))
     } catch (error) {
         handleSourceError(error, res, 'Failed to retrieve URL report')
     }

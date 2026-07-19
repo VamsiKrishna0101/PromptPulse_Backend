@@ -5,6 +5,7 @@ import { buildBrandPromptGenerationSystemPrompt, buildBrandPromptGenerationUserP
 import { buildAnalysisSystemPrompt, buildAnalysisUserPrompt, type AnalysisResult } from '../../prompts/analysis_prompts'
 import { buildBrandResearchSystemPrompt, buildBrandResearchUserPrompt, type BrandResearchResult } from '../../prompts/research_prompts'
 import { generateWithBedrockGateway, hasBedrockGateway } from './bedrock_gateway_service'
+import { sanitizeDiscoveredBrandName } from '../brands/brand_entity_policy'
 
 const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
 const model = genai.getGenerativeModel({ model: 'gemini-3.1-flash-lite' })
@@ -239,7 +240,7 @@ function normalizeAnalysisResult(
     const normalizedBrandMentions = dedupeBrandMentions([
         ...analysis.brand_mentions,
         ...extractKnownBrandMentions(rawResponse),
-    ], citations)
+    ], citations, brandName, brandUrl)
 
     const citationSources = citations
         .filter(citation => citation.url)
@@ -309,19 +310,26 @@ function hasVisibleBrandMention(rawResponse: string, brandName: string, brandUrl
 
 function dedupeBrandMentions(
     mentions: AnalysisResult["brand_mentions"],
-    citations: { url?: string | null; domain?: string | null; title?: string | null }[] = []
+    citations: { url?: string | null; domain?: string | null; title?: string | null }[] = [],
+    trackedBrandName = "",
+    trackedBrandUrl = "",
 ) {
     const seen = new Set<string>()
     const normalized: AnalysisResult["brand_mentions"] = []
     for (const mention of mentions) {
-        const brandName = canonicalBrandName(mention.brand_name)
+        const sanitizedName = sanitizeDiscoveredBrandName(mention.brand_name)
+        if (!sanitizedName) continue
+        const brandName = canonicalBrandName(sanitizedName)
         const key = brandName.toLowerCase()
         if (!key || seen.has(key)) continue
         seen.add(key)
+        const isTrackedBrand = normalizeBrandKey(brandName) === normalizeBrandKey(trackedBrandName)
         normalized.push({
             ...mention,
             brand_name: brandName,
-            domain: normalizeBrandDomain(mention.domain) || domainFromCitations(brandName, citations) || knownBrandDomain(brandName),
+            domain: isTrackedBrand
+                ? safeDomain(trackedBrandUrl)
+                : normalizeBrandDomain(mention.domain) || domainFromCitations(brandName, citations) || knownBrandDomain(brandName),
         })
     }
     return normalized

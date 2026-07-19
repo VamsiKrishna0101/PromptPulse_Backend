@@ -50,5 +50,7 @@ export type CreateProjectInput = {
         topic: string
         type: string
         text: string
+        selected: boolean
+        source?: 'GENERATED' | 'CUSTOMER'
     }[]
 }

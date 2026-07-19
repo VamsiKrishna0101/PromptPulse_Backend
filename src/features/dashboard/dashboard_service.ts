@@ -13,6 +13,10 @@ export interface DashboardFilters {
     tag?: string
     prompt_id?: string
     q?: string
+    country?: string
+    intent?: string
+    mentioned?: boolean
+    cited?: boolean
 }
 
 export function buildChatWhere(project_id: string, filters: DashboardFilters): Prisma.ChatWhereInput {
@@ -28,12 +32,39 @@ export function buildChatWhere(project_id: string, filters: DashboardFilters): P
         // Handle variations (e.g. ChatGPT could be chatgpt, openai, etc. The DB stores what we save. Typically ChatGPT, Gemini, Perplexity)
         where.ai_model = { contains: filters.model, mode: 'insensitive' }
     }
+
+    if (filters.country && filters.country !== 'all') {
+        where.AND = [
+            ...(where.AND ? (Array.isArray(where.AND) ? where.AND : [where.AND]) : []),
+            {
+                OR: [
+                    { geo_country_code: filters.country },
+                    { geo_country_name: { equals: filters.country, mode: 'insensitive' } },
+                ],
+            },
+        ]
+    }
+
+    if (typeof filters.mentioned === 'boolean') {
+        where.brand_mentioned = filters.mentioned
+    }
+
+    if (filters.cited === true) {
+        where.sources = { some: { is_cited: true } }
+    } else if (filters.cited === false) {
+        where.sources = { none: { is_cited: true } }
+    }
     
     const promptWhere: Prisma.PromptWhereInput = { project_id }
     let hasPromptFilter = false
     
     if (filters.topic && filters.topic !== 'all') {
         promptWhere.topic = filters.topic
+        hasPromptFilter = true
+    }
+
+    if (filters.intent && filters.intent !== 'all') {
+        promptWhere.type = filters.intent
         hasPromptFilter = true
     }
     
@@ -53,12 +84,18 @@ export function buildChatWhere(project_id: string, filters: DashboardFilters): P
 
     const q = filters.q?.trim()
     if (q) {
-        where.OR = [
+        const searchCondition: Prisma.ChatWhereInput = {
+          OR: [
             { raw_response: { contains: q, mode: 'insensitive' } },
             { prompt: { text: { contains: q, mode: 'insensitive' } } },
             { brand_mentions: { some: { brand_name: { contains: q, mode: 'insensitive' } } } },
             { sources: { some: { domain: { contains: q, mode: 'insensitive' } } } },
             { sources: { some: { title: { contains: q, mode: 'insensitive' } } } }
+          ],
+        }
+        where.AND = [
+          ...(where.AND ? (Array.isArray(where.AND) ? where.AND : [where.AND]) : []),
+          searchCondition,
         ]
     }
     
@@ -120,12 +157,23 @@ function aggregateOwnBrand(chats: Array<{ brand_mentioned: boolean; brand_positi
 export async function getFilterOptions(project_id: string) {
     const prompts = await prisma.prompt.findMany({
         where: { project_id },
-        select: { topic: true }
+        select: { topic: true, tags: true, type: true }
     })
-    
+
     const topics = Array.from(new Set(prompts.map(p => p.topic).filter(Boolean)))
-    
-    return { topics, tags: [] }
+    const tags = Array.from(new Set(prompts.flatMap(p => p.tags).filter(Boolean)))
+    const intents = Array.from(new Set(prompts.map(p => p.type).filter(Boolean)))
+    const chats = await prisma.chat.findMany({
+        where: { prompt: { project_id } },
+        select: { geo_country_code: true, geo_country_name: true },
+        distinct: ['geo_country_code', 'geo_country_name'],
+    })
+    const countries = chats
+        .map(chat => ({ value: chat.geo_country_code || chat.geo_country_name || '', label: chat.geo_country_name || chat.geo_country_code || '' }))
+        .filter(country => country.value && country.label)
+        .sort((a, b) => a.label.localeCompare(b.label))
+
+    return { topics, tags, intents, countries }
 }
 
 export async function runPrompt(input: RunPromptInput) {

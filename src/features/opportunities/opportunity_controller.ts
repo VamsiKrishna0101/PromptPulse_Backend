@@ -11,6 +11,10 @@ function parseFilters(query: Request["query"]): DashboardFilters {
     if (query.topic && query.topic !== "all") filters.topic = query.topic as string
     if (query.prompt_id && query.prompt_id !== "all") filters.prompt_id = query.prompt_id as string
     if (query.q) filters.q = query.q as string
+    if (query.country && query.country !== "all") filters.country = query.country as string
+    if (query.intent && query.intent !== "all") filters.intent = query.intent as string
+    if (query.mentioned === "true" || query.mentioned === "false") filters.mentioned = query.mentioned === "true"
+    if (query.cited === "true" || query.cited === "false") filters.cited = query.cited === "true"
     return filters
 }
 

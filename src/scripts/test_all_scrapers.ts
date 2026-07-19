@@ -1,11 +1,11 @@
 import "../lib/env"
 import { runUiScrape, type UiEngine } from "../features/scraping/scraper_api_client"
 
-const supportedEngines = ["chatgpt", "gemini", "perplexity", "google_ai_overview", "google_ai_mode", "copilot"] as const
-const engines = (process.env.ALL_SCRAPER_TEST_ENGINES ?? "chatgpt,gemini,perplexity,google_ai_overview,google_ai_mode,copilot")
+const supportedEngines = ["chatgpt", "gemini", "perplexity", "google_ai_mode", "copilot"] as const
+const engines = (process.env.ALL_SCRAPER_TEST_ENGINES ?? "chatgpt,gemini,perplexity,google_ai_mode,copilot")
     .split(",")
     .map(engine => engine.trim().toLowerCase())
-    .filter((engine): engine is UiEngine => supportedEngines.includes(engine as UiEngine))
+    .filter((engine): engine is UiEngine => (supportedEngines as readonly string[]).includes(engine))
 
 const prompt = process.env.ALL_SCRAPER_TEST_PROMPT ??
     "What are the best platforms for researching CEOs and leadership teams? Include free tools, professional databases, and executive intelligence services."

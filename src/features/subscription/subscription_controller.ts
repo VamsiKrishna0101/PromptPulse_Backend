@@ -12,18 +12,23 @@ import {
     getMyPlan,
     getPlanLimits,
     getPlanQuota,
-    handleStripeWebhook,
+    createBillingPortalSession,
+    verifyCheckoutSession,
     refreshPlanUsage,
 } from "./subscription_service"
+import { handleStripeWebhook } from "./stripe_webhook_service"
+import { listBillingInvoices } from "./billing_invoice_service"
 
 export async function createSubscriptionController(req: Request, res: Response): Promise<void> {
     try {
         const { user: { id: userId } } = req as AuthenticatedRequest
-        const { plan } = req.body as { plan?: Plan }
+        const { plan, billing_interval, request_id } = req.body as { plan?: Plan; billing_interval?: "monthly" | "annual"; request_id?: string }
 
         const checkout = await createSubscription({
             user_id: userId,
             plan: plan as Exclude<Plan, "FREE">,
+            billing_interval: billing_interval ?? "monthly",
+            request_id,
         })
 
         res.status(201).json(checkout)
@@ -37,6 +42,30 @@ export async function createSubscriptionController(req: Request, res: Response):
 
         res.status(statusCode).json({ error: message })
     }
+}
+
+export async function createBillingPortalController(req: Request, res: Response): Promise<void> {
+    try {
+        const { user: { id } } = req as AuthenticatedRequest
+        res.json(await createBillingPortalSession(id))
+    } catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : "Failed to open billing portal" })
+    }
+}
+
+export async function verifyCheckoutController(req: Request, res: Response): Promise<void> {
+    try {
+        const { user: { id } } = req as AuthenticatedRequest
+        const sessionId = Array.isArray(req.params.sessionId) ? req.params.sessionId[0] : req.params.sessionId
+        res.json(await verifyCheckoutSession(id, sessionId))
+    } catch (error) {
+        res.status(404).json({ error: error instanceof Error ? error.message : "Checkout session not found" })
+    }
+}
+
+export async function listBillingInvoicesController(req: Request, res: Response): Promise<void> {
+    const { user: { id } } = req as AuthenticatedRequest
+    res.json({ invoices: await listBillingInvoices(id) })
 }
 
 export async function getMyPlanController(req: Request, res: Response): Promise<void> {
@@ -86,7 +115,8 @@ export async function stripeWebhookController(req: Request, res: Response): Prom
         res.status(200).json(result)
     } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to handle Stripe webhook"
-        res.status(400).json({ error: message })
+        const isSignatureError = message.includes("signature") || message.includes("STRIPE_WEBHOOK_SECRET")
+        res.status(isSignatureError ? 400 : 500).json({ error: message })
     }
 }
 

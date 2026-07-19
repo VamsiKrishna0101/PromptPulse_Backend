@@ -10,6 +10,7 @@ import { discoverPromptCandidates } from './prompt_discovery_service'
 import { assertProjectAccess, assertPromptAccess } from '../projects/project_access'
 import type { AuthenticatedRequest } from '../../middleware/auth'
 import { assertCanCreatePrompts } from '../subscription/subscription_service'
+import prisma from '../../lib/prisma'
 
 const createTopicSchema = z.object({
     name: z.string().trim().min(2, 'Topic name must be at least 2 characters').max(80, 'Topic name is too long'),
@@ -19,6 +20,10 @@ const createPromptSchema = z.object({
     text: z.string().trim().min(8, 'Prompt must be at least 8 characters').max(500, 'Prompt is too long'),
     topic: z.string().trim().min(2, 'Topic is required').max(80, 'Topic is too long'),
 })
+
+function readRouteParam(value: string | string[] | undefined): string | null {
+    return typeof value === 'string' && value ? value : null
+}
 
 export const getPromptsController = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -35,8 +40,13 @@ export const getPromptsController = async (req: Request, res: Response): Promise
         const topic = req.query.topic as string
         const model = req.query.model as string
         const days = req.query.days ? parseInt(req.query.days as string) : undefined
+        const country = req.query.country as string
+        const intent = req.query.intent as string
+        const tag = req.query.tag as string
+        const mentioned = req.query.mentioned === 'true' || req.query.mentioned === 'false' ? req.query.mentioned === 'true' : undefined
+        const cited = req.query.cited === 'true' || req.query.cited === 'false' ? req.query.cited === 'true' : undefined
 
-        const prompts = await getPromptsWithStats({ project_id, status, topic, model, days })
+        const prompts = await getPromptsWithStats({ project_id, status, topic, model, days, country, intent, tag, mentioned, cited })
         res.status(200).json(prompts)
     } catch (error) {
         if (error instanceof Error && error.message === 'PROJECT_NOT_FOUND') {
@@ -55,7 +65,8 @@ export const getPromptTopicsController = async (req: Request, res: Response): Pr
             return
         }
 
-        await assertProjectAccess(project_id, (req as AuthenticatedRequest).user.id)
+        const user_id = (req as AuthenticatedRequest).user.id
+        await assertProjectAccess(project_id, user_id)
 
         const topics = await getPromptTopics(project_id)
         res.status(200).json({ topics })
@@ -125,7 +136,8 @@ export const createPromptController = async (req: Request, res: Response): Promi
             return
         }
 
-        await assertProjectAccess(project_id, (req as AuthenticatedRequest).user.id)
+        const user_id = (req as AuthenticatedRequest).user.id
+        await assertProjectAccess(project_id, user_id)
 
         const topics = await getPromptTopics(project_id)
         const topicExists = topics.some(topic => topic.name.toLowerCase() === parsed.data.topic.trim().toLowerCase())
@@ -203,10 +215,22 @@ export const activatePromptController = async (req: Request, res: Response): Pro
 
         const user_id = (req as AuthenticatedRequest).user.id
         await assertPromptAccess(prompt_id, user_id)
+        const currentPrompt = await prisma.prompt.findUnique({
+            where: { id: prompt_id },
+            select: { status: true, is_active: true },
+        })
+        if (!currentPrompt) {
+            res.status(404).json({ error: 'Prompt not found' })
+            return
+        }
+        if (currentPrompt.status !== 'ACTIVE' || !currentPrompt.is_active) {
+            await assertCanCreatePrompts(user_id, 1)
+        }
         const prompt = await activatePrompt(prompt_id)
         res.status(200).json(prompt)
     } catch (error) {
-        res.status(500).json({ error: 'Failed to activate prompt' })
+        const message = error instanceof Error ? error.message : 'Failed to activate prompt'
+        res.status(message.includes('plan') || message.includes('remaining') ? 400 : 500).json({ error: message })
     }
 }
 
@@ -237,9 +261,14 @@ export const listGeoCountriesController = async (_req: Request, res: Response): 
 /** GET /prompts/:prompt_id/geo */
 export const listGeoVariantsController = async (req: Request, res: Response): Promise<void> => {
     try {
+        const prompt_id = readRouteParam(req.params.prompt_id)
+        if (!prompt_id) {
+            res.status(400).json({ error: 'prompt_id is required' })
+            return
+        }
         const user_id = (req as AuthenticatedRequest).user.id
-        await assertPromptAccess(req.params.prompt_id, user_id)
-        const variants = await getGeoVariantsForPrompt(req.params.prompt_id)
+        await assertPromptAccess(prompt_id, user_id)
+        const variants = await getGeoVariantsForPrompt(prompt_id)
         res.json({ variants })
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch geo variants' })
@@ -258,10 +287,15 @@ export const addGeoVariantController = async (req: Request, res: Response): Prom
         return
     }
     try {
+        const prompt_id = readRouteParam(req.params.prompt_id)
+        if (!prompt_id) {
+            res.status(400).json({ error: 'prompt_id is required' })
+            return
+        }
         const user_id = (req as AuthenticatedRequest).user.id
-        await assertPromptAccess(req.params.prompt_id, user_id)
+        await assertPromptAccess(prompt_id, user_id)
         const variant = await addGeoVariant({
-            prompt_id: req.params.prompt_id,
+            prompt_id,
             country_code,
             country_name,
             city,
@@ -279,7 +313,12 @@ export const addGeoVariantController = async (req: Request, res: Response): Prom
 /** DELETE /prompts/geo/variants/:variant_id */
 export const deleteGeoVariantController = async (req: Request, res: Response): Promise<void> => {
     try {
-        await removeGeoVariant(req.params.variant_id)
+        const variant_id = readRouteParam(req.params.variant_id)
+        if (!variant_id) {
+            res.status(400).json({ error: 'variant_id is required' })
+            return
+        }
+        await removeGeoVariant(variant_id)
         res.json({ success: true })
     } catch (error) {
         res.status(500).json({ error: 'Failed to delete geo variant' })
@@ -292,7 +331,12 @@ export const deleteGeoVariantController = async (req: Request, res: Response): P
 export const toggleGeoVariantController = async (req: Request, res: Response): Promise<void> => {
     const { is_active } = req.body as { is_active: boolean }
     try {
-        const variant = await toggleGeoVariant(req.params.variant_id, is_active)
+        const variant_id = readRouteParam(req.params.variant_id)
+        if (!variant_id) {
+            res.status(400).json({ error: 'variant_id is required' })
+            return
+        }
+        const variant = await toggleGeoVariant(variant_id, is_active)
         res.json({ variant })
     } catch (error) {
         res.status(500).json({ error: 'Failed to update geo variant' })
@@ -303,8 +347,13 @@ export const toggleGeoVariantController = async (req: Request, res: Response): P
 export const getGeoStatsController = async (req: Request, res: Response): Promise<void> => {
     const days = req.query.days ? Number(req.query.days) : undefined
     try {
-        await assertProjectAccess(req.params.project_id, (req as AuthenticatedRequest).user.id)
-        const stats = await getGeoVisibilityStats(req.params.project_id, days)
+        const project_id = readRouteParam(req.params.project_id)
+        if (!project_id) {
+            res.status(400).json({ error: 'project_id is required' })
+            return
+        }
+        await assertProjectAccess(project_id, (req as AuthenticatedRequest).user.id)
+        const stats = await getGeoVisibilityStats(project_id, days)
         res.json({ stats })
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch geo stats' })

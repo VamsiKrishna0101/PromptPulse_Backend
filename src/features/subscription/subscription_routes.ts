@@ -11,11 +11,17 @@ import {
     getPlanLimitsController,
     getPlanQuotaController,
     refreshPlanUsageController,
+    createBillingPortalController,
+    verifyCheckoutController,
+    listBillingInvoicesController,
 } from "./subscription_controller"
 
 const router = Router()
 
 router.post("/create", createSubscriptionController)
+router.post("/portal", createBillingPortalController)
+router.get("/checkout/:sessionId", verifyCheckoutController)
+router.get("/invoices", listBillingInvoicesController)
 router.get("/me", getMyPlanController)
 router.get("/limits", getPlanLimitsController)
 router.get("/quota", getPlanQuotaController)

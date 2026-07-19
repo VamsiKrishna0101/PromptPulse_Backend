@@ -4,21 +4,7 @@ import { enqueueScrapeJob } from "../../queues/scrape_queue"
 import { getGeoCountryByName } from "../geo/countries"
 import { canRunRefresh } from "../subscription/subscription_service"
 import { getRefreshWindowStart } from "../refresh/refresh_window"
-
-const CORE_DEFAULT_ENGINES: Engine[] = [
-    Engine.CHATGPT,
-    Engine.GEMINI,
-    Engine.PERPLEXITY,
-    Engine.GOOGLE_AI_MODE
-]
-
-function getDefaultEngines(): Engine[] {
-    if (process.env.BRIGHT_DATA_COPILOT_SCRAPER_ID?.trim()) {
-        return [...CORE_DEFAULT_ENGINES, Engine.COPILOT]
-    }
-
-    return CORE_DEFAULT_ENGINES
-}
+import { activeConfiguredEngines, isActiveScrapeEngine } from "./scrape_engine_policy"
 
 export async function enqueueProjectRun(input: {
     project_id: string
@@ -28,7 +14,11 @@ export async function enqueueProjectRun(input: {
     profile?: string
     enqueue_jobs?: boolean
 }) {
-    const engines = input.engines?.length ? input.engines : getDefaultEngines()
+    const requestedEngines = input.engines?.length ? input.engines : activeConfiguredEngines()
+    const engines = [...new Set(requestedEngines.filter(isActiveScrapeEngine))]
+    if (engines.length === 0) {
+        throw new Error("No supported scrape engines were selected")
+    }
     const [project, prompts] = await Promise.all([
         prisma.project.findUniqueOrThrow({
             where: { id: input.project_id },
@@ -152,10 +142,6 @@ export async function enqueueDailyRuns(options: {
         })
 
         if (existingTodayRun) {
-            const retryResult = await requeueFailedJobsForRun(existingTodayRun.id)
-            if (retryResult.jobs.length > 0) {
-                results.push(retryResult)
-            }
             continue
         }
 
@@ -173,58 +159,6 @@ export async function enqueueDailyRuns(options: {
     }
 
     return results
-}
-
-async function requeueFailedJobsForRun(run_id: string) {
-    const failedJobs = await prisma.scrapeJob.findMany({
-        where: {
-            run_id,
-            status: ScrapeJobStatus.FAILED,
-            chat_id: null,
-        },
-        select: { id: true },
-    })
-
-    if (failedJobs.length === 0) {
-        const run = await prisma.run.findUniqueOrThrow({ where: { id: run_id } })
-        return { run, jobs: [] }
-    }
-
-    const jobIds = failedJobs.map(job => job.id)
-
-    await prisma.$transaction([
-        prisma.brightDataBatchItem.deleteMany({
-            where: { scrape_job_id: { in: jobIds } },
-        }),
-        prisma.scrapeJob.updateMany({
-            where: { id: { in: jobIds } },
-            data: {
-                status: ScrapeJobStatus.QUEUED,
-                started_at: null,
-                completed_at: null,
-                error_reason: null,
-                retry_count: { increment: 1 },
-            },
-        }),
-        prisma.run.update({
-            where: { id: run_id },
-            data: {
-                status: VisibilityRunStatus.QUEUED,
-                completed_at: null,
-                error_reason: null,
-            },
-        }),
-    ])
-
-    const [run, jobs] = await Promise.all([
-        prisma.run.findUniqueOrThrow({ where: { id: run_id } }),
-        prisma.scrapeJob.findMany({
-            where: { id: { in: jobIds } },
-            orderBy: { created_at: "asc" },
-        }),
-    ])
-
-    return { run, jobs }
 }
 
 export async function getScrapeRun(run_id: string) {

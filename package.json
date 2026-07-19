@@ -16,6 +16,7 @@
     "sources:enrich-pending": "tsx src/scripts/enrich_pending_sources.ts",
     "scheduler:daily": "tsx src/scheduler/daily_scheduler.ts",
     "scheduler:weekly-email": "tsx src/scheduler/weekly_email_scheduler.ts",
+    "prompts:recommend": "tsx src/scripts/generate_due_prompt_recommendations.ts",
     "weekly-email:send": "tsx src/scripts/send_weekly_email_reports.ts",
     "test:bedrock-analysis": "tsx src/scripts/test_bedrock_analysis.ts",
     "test:scrape": "tsx src/scripts/test_scrape_runtime.ts",

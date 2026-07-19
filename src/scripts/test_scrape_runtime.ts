@@ -1,9 +1,9 @@
 import "../lib/env"
 import { runUiScrape, type UiEngine } from "../features/scraping/scraper_api_client"
 
-const supportedEngines = ["chatgpt", "gemini", "perplexity", "google_ai_overview", "google_ai_mode", "copilot"] as const
+const supportedEngines = ["chatgpt", "gemini", "perplexity", "google_ai_mode", "copilot"] as const
 const requestedEngine = (process.env.SCRAPE_TEST_ENGINE ?? "chatgpt").trim().toLowerCase()
-const engine: UiEngine = supportedEngines.includes(requestedEngine as UiEngine)
+const engine: UiEngine = (supportedEngines as readonly string[]).includes(requestedEngine)
     ? requestedEngine as UiEngine
     : "chatgpt"
 

@@ -1,13 +1,11 @@
 import prisma from "../../lib/prisma"
-import { getPlanQuota } from "../subscription/subscription_service"
-
 type Candidate = {
     text: string
     topic: string
     type: string
     tags: string[]
     priority_score: number
-    volume_score: number
+    volume_score: number | null
 }
 
 function normalize(value: string) {
@@ -39,7 +37,10 @@ function topicFromPromptTopic(topic: string) {
     return titleCase(topic || "Category Research")
 }
 
-export async function discoverPromptCandidates(project_id: string) {
+export async function discoverPromptCandidates(project_id: string, options: {
+    limit?: number
+    runTag?: string
+} = {}) {
     const project = await prisma.project.findUniqueOrThrow({
         where: { id: project_id },
         include: {
@@ -142,7 +143,7 @@ export async function discoverPromptCandidates(project_id: string) {
                 type: "category_discovery",
                 tags: [...evidenceTags, "intent:best_tools"],
                 priority_score: baseScore,
-                volume_score: 78,
+                volume_score: null,
             },
             {
                 text: `which ${topic.toLowerCase()} platform should my team use?`,
@@ -150,7 +151,7 @@ export async function discoverPromptCandidates(project_id: string) {
                 type: "buyer_shortlist",
                 tags: [...evidenceTags, "intent:buyer_shortlist"],
                 priority_score: clampScore(baseScore + 4),
-                volume_score: 72,
+                volume_score: null,
             },
             {
                 text: `how do i choose a ${topic.toLowerCase()} platform for my company?`,
@@ -158,7 +159,7 @@ export async function discoverPromptCandidates(project_id: string) {
                 type: "decision_support",
                 tags: [...evidenceTags, "intent:how_to_choose"],
                 priority_score: clampScore(baseScore - 2),
-                volume_score: 68,
+                volume_score: null,
             },
         )
 
@@ -170,7 +171,7 @@ export async function discoverPromptCandidates(project_id: string) {
                     type: "alternatives",
                     tags: [...evidenceTags, "intent:alternatives", `competitor:${competitor}`],
                     priority_score: clampScore(baseScore + 8),
-                    volume_score: 82,
+                    volume_score: null,
                 },
                 {
                     text: `${competitor} vs other ${topic.toLowerCase()} tools`,
@@ -178,7 +179,7 @@ export async function discoverPromptCandidates(project_id: string) {
                     type: "comparison",
                     tags: [...evidenceTags, "intent:comparison", `competitor:${competitor}`],
                     priority_score: clampScore(baseScore + 6),
-                    volume_score: 76,
+                    volume_score: null,
                 },
             )
         }
@@ -190,17 +191,15 @@ export async function discoverPromptCandidates(project_id: string) {
                 type: "source_influence",
                 tags: [...evidenceTags, "intent:sources", ...sourceDomains.map(domain => `source_domain:${domain}`)],
                 priority_score: clampScore(baseScore + 5),
-                volume_score: 54,
+                volume_score: null,
             })
         }
     }
 
-    const quota = await getPlanQuota(project.user_id)
-    const remainingPrompts = quota.remaining.prompts
     const deduped = uniqueByText(candidates)
         .filter(candidate => !existingTexts.has(normalize(candidate.text)))
         .sort((a, b) => b.priority_score - a.priority_score)
-        .slice(0, Math.min(12, remainingPrompts))
+        .slice(0, Math.max(1, Math.min(25, options.limit ?? 12)))
 
     let created = 0
     let skipped = Math.max(0, uniqueByText(candidates).filter(candidate => !existingTexts.has(normalize(candidate.text))).length - deduped.length)
@@ -241,9 +240,10 @@ export async function discoverPromptCandidates(project_id: string) {
                 type: candidate.type,
                 status: "SUGGESTED",
                 source: "GENERATED",
-                tags: candidate.tags,
+                tags: options.runTag ? [...candidate.tags, options.runTag] : candidate.tags,
                 priority_score: candidate.priority_score,
                 volume_score: candidate.volume_score,
+                is_active: false,
             },
         })
 
@@ -256,8 +256,6 @@ export async function discoverPromptCandidates(project_id: string) {
         total_candidates: deduped.length,
         message: created
             ? `Found ${created} evidence-backed prompt suggestions.`
-            : remainingPrompts === 0
-                ? "Prompt limit reached. Upgrade or remove prompts before adding new suggestions."
             : "No new prompt suggestions found. Your current set already covers the discovered intents.",
     }
 }

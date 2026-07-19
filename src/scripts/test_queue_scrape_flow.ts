@@ -6,24 +6,23 @@ import { getRedisConnectionOptions } from "../lib/redis"
 import { createPrompt, createTopic } from "../features/prompts/prompt_service"
 import { enqueueProjectRun } from "../features/scraping/scrape_orchestration_service"
 import { closeScrapeQueue, SCRAPE_QUEUE_NAME, type ScrapeQueueJob } from "../queues/scrape_queue"
+import { activeConfiguredEngines } from "../features/scraping/scrape_engine_policy"
 
 const ENGINE_ALIASES: Record<string, Engine> = {
     chatgpt: Engine.CHATGPT,
     gpt: Engine.CHATGPT,
     gemini: Engine.GEMINI,
     perplexity: Engine.PERPLEXITY,
-    google_ai_overview: Engine.GOOGLE_AI_OVERVIEW,
     google_ai_mode: Engine.GOOGLE_AI_MODE,
     google: Engine.GOOGLE_AI_MODE,
     copilot: Engine.COPILOT,
     bing: Engine.COPILOT,
 }
 
-const SCRAPER_ENV_BY_ENGINE: Record<Engine, string> = {
+const SCRAPER_ENV_BY_ENGINE: Partial<Record<Engine, string>> = {
     [Engine.CHATGPT]: "BRIGHT_DATA_CHATGPT_SCRAPER_ID",
     [Engine.GEMINI]: "BRIGHT_DATA_GEMINI_SCRAPER_ID",
     [Engine.PERPLEXITY]: "BRIGHT_DATA_PERPLEXITY_SCRAPER_ID",
-    [Engine.GOOGLE_AI_OVERVIEW]: "BRIGHT_DATA_GOOGLE_AI_OVERVIEW_SCRAPER_ID",
     [Engine.GOOGLE_AI_MODE]: "BRIGHT_DATA_GOOGLE_AI_MODE_SCRAPER_ID",
     [Engine.COPILOT]: "BRIGHT_DATA_COPILOT_SCRAPER_ID",
 }
@@ -39,7 +38,7 @@ function parseEngines() {
         .map(value => {
             const engine = ENGINE_ALIASES[value]
             if (!engine) {
-                throw new Error(`Unknown engine "${value}". Use chatgpt, gemini, perplexity, google_ai_overview, google_ai_mode, copilot.`)
+                throw new Error(`Unknown engine "${value}". Use chatgpt, gemini, perplexity, google_ai_mode, copilot.`)
             }
             return engine
         })
@@ -51,9 +50,9 @@ function assertBrightDataEnv(engines: Engine[] | undefined) {
     const missing = []
     if (!process.env.BRIGHT_DATA_API_KEY?.trim()) missing.push("BRIGHT_DATA_API_KEY")
 
-    for (const engine of engines ?? Object.values(Engine)) {
+    for (const engine of engines ?? activeConfiguredEngines()) {
         const envName = SCRAPER_ENV_BY_ENGINE[engine]
-        if (!process.env[envName]?.trim()) missing.push(envName)
+        if (envName && !process.env[envName]?.trim()) missing.push(envName)
     }
 
     if (missing.length) {

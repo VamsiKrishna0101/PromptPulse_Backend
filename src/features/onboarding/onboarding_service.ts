@@ -68,7 +68,24 @@ export async function createProject(input: CreateProjectInput) {
             throw new Error('User not found')
         }
 
-        await assertCanCreateProjectWithPrompts(user_id, prompts.length)
+        const normalizedPrompts = [...new Map(prompts.map(prompt => {
+            const text = prompt.text.trim().replace(/\s+/g, ' ')
+            const topic = prompt.topic.trim().replace(/\s+/g, ' ') || 'Imported prompts'
+            return [text.toLowerCase(), {
+                text,
+                topic,
+                type: prompt.type.trim().replace(/\s+/g, '_') || 'buyer_question',
+                selected: Boolean(prompt.selected),
+                source: prompt.source === 'CUSTOMER' ? 'CUSTOMER' as const : 'GENERATED' as const,
+            }]
+        })).values()].filter(prompt => prompt.text.length >= 8 && prompt.text.length <= 500)
+
+        const activePromptCount = normalizedPrompts.filter(prompt => prompt.selected).length
+        if (activePromptCount === 0) {
+            throw new Error('Select at least one prompt for your first visibility run')
+        }
+
+        await assertCanCreateProjectWithPrompts(user_id, activePromptCount)
         await assertCanAddCompetitors(user_id, competitors.length)
 
         const country = getGeoCountryByName(brand_location)
@@ -76,23 +93,41 @@ export async function createProject(input: CreateProjectInput) {
             throw new Error('Please select a supported primary market')
         }
 
-        const project = await prisma.project.create({
-            data: {
-                user_id,
-                brand_name,
-                brand_url,
-                brand_location: country.name,
-                competitors: {
-                    create: competitors.map(c => ({ name: c }))
+        const project = await prisma.$transaction(async transaction => {
+            const createdProject = await transaction.project.create({
+                data: {
+                    user_id,
+                    brand_name,
+                    brand_url,
+                    brand_location: country.name,
+                    competitors: {
+                        create: competitors.map(c => ({ name: c }))
+                    },
                 },
-                prompts: {
-                    create: prompts.map(p => ({
-                        text: p.text,
-                        topic: p.topic,
-                        type: p.type
-                    }))
-                }
+            })
+
+            const topicNames = [...new Set(normalizedPrompts.map(prompt => prompt.topic))]
+            if (topicNames.length) {
+                await transaction.topic.createMany({
+                    data: topicNames.map(name => ({ name, project_id: createdProject.id })),
+                    skipDuplicates: true,
+                })
             }
+
+            await transaction.prompt.createMany({
+                data: normalizedPrompts.map(prompt => ({
+                    project_id: createdProject.id,
+                    text: prompt.text,
+                    topic: prompt.topic,
+                    type: prompt.type,
+                    status: prompt.selected ? 'ACTIVE' : 'SUGGESTED',
+                    is_active: prompt.selected,
+                    source: prompt.source,
+                    tags: prompt.selected ? ['onboarding:selected'] : ['onboarding:unused'],
+                })),
+            })
+
+            return createdProject
         })
 
         return project
