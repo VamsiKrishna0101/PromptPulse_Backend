@@ -13,6 +13,7 @@ import type {
 } from "./subscription_types"
 import { getAccessPeriod, getEffectivePlanAccess } from "./entitlements"
 import { getCreditBalance } from "../credits/credits_service"
+import { getRefreshWindowStart } from "../refresh/refresh_window"
 
 let stripeClient: Stripe | null = null
 const TRIAL_DAYS = 14
@@ -117,11 +118,6 @@ function isWithinLimit(limit: number | "unlimited", used: number) {
 
 function formatLimit(limit: number | "unlimited") {
     return limit === "unlimited" ? "unlimited" : String(limit)
-}
-
-function startOfToday() {
-    const now = new Date()
-    return new Date(now.getFullYear(), now.getMonth(), now.getDate())
 }
 
 async function getLiveUsageCounts(userId: string) {
@@ -505,7 +501,7 @@ export async function canRunRefresh(userId: string, projectId?: string): Promise
             where: {
                 project_id: projectId,
                 project: { user_id: userId },
-                ran_at: { gte: startOfToday() },
+                ran_at: { gte: getRefreshWindowStart() },
             },
         })
         const allowed = used < 1

@@ -10,7 +10,39 @@ function normalizeDemoInput(input: DemoInput): DemoInput {
         company: input.company?.trim() || undefined,
         notes: input.notes?.trim() || undefined,
         timezone: input.timezone.trim(),
+        countryCode: input.countryCode?.trim().toUpperCase() || undefined,
+        countryName: input.countryName?.trim() || undefined,
+        localTimeLabel: input.localTimeLabel?.trim() || undefined,
+        istTimeLabel: input.istTimeLabel?.trim() || undefined,
     }
+}
+
+function getIstHourMinute(date: Date) {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Asia/Kolkata",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+    }).formatToParts(date)
+
+    const hour = Number(parts.find(part => part.type === "hour")?.value)
+    const minute = Number(parts.find(part => part.type === "minute")?.value)
+
+    return { hour, minute }
+}
+
+function assertValidTimezone(timezone: string) {
+    try {
+        new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format(new Date())
+    } catch {
+        throw new Error("Selected timezone is not valid")
+    }
+}
+
+function isInsideIstDemoWindow(date: Date) {
+    const { hour, minute } = getIstHourMinute(date)
+    const minutes = hour * 60 + minute
+    return minutes >= 7 * 60 && minutes < 23 * 60
 }
 
 export async function bookDemo(input: DemoInput) {
@@ -20,8 +52,14 @@ export async function bookDemo(input: DemoInput) {
         throw new Error("Only work/business email addresses are allowed.")
     }
 
+    assertValidTimezone(normalizedInput.timezone)
+
     if (normalizedInput.scheduledAt <= new Date()) {
         throw new Error("Demo time must be scheduled in the future")
+    }
+
+    if (!isInsideIstDemoWindow(normalizedInput.scheduledAt)) {
+        throw new Error("Demo slots are available only between 7:00 AM and 11:00 PM IST")
     }
 
     const existingBooking = await prisma.bookDemo.findFirst({
@@ -47,6 +85,10 @@ export async function bookDemo(input: DemoInput) {
             notes: normalizedInput.notes,
             scheduledAt: normalizedInput.scheduledAt,
             timezone: normalizedInput.timezone,
+            countryCode: normalizedInput.countryCode,
+            countryName: normalizedInput.countryName,
+            localTimeLabel: normalizedInput.localTimeLabel,
+            istTimeLabel: normalizedInput.istTimeLabel,
         },
     })
 }

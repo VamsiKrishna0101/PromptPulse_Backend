@@ -9,6 +9,10 @@ const createDemoSchema = z.object({
     notes: z.string().trim().max(2000, "Notes are too long").optional(),
     scheduledAt: z.coerce.date(),
     timezone: z.string().trim().min(2, "Timezone is required").max(80, "Timezone is too long"),
+    countryCode: z.string().trim().length(2, "Country is required").optional(),
+    countryName: z.string().trim().min(2, "Country is required").max(120, "Country name is too long").optional(),
+    localTimeLabel: z.string().trim().max(160, "Local time label is too long").optional(),
+    istTimeLabel: z.string().trim().max(160, "IST time label is too long").optional(),
 })
 
 function firstError(error: z.ZodError) {
@@ -39,6 +43,8 @@ export async function bookDemoController(req: Request, res: Response): Promise<v
         const statusCode =
             message === "You have already booked a demo for this time" ? 409 :
             message === "Only work/business email addresses are allowed." ? 422 :
+            message === "Selected timezone is not valid" ? 400 :
+            message === "Demo slots are available only between 7:00 AM and 11:00 PM IST" ? 400 :
             message === "Demo time must be scheduled in the future" ? 400 :
             500
 

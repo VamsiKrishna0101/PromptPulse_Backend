@@ -5,4 +5,8 @@ export type DemoInput = {
     notes?: string,
     scheduledAt: Date,
     timezone: string,
+    countryCode?: string,
+    countryName?: string,
+    localTimeLabel?: string,
+    istTimeLabel?: string,
 }

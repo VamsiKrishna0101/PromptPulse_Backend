@@ -517,7 +517,7 @@ function promptTextForJob(job: ScrapeJobWithPrompt) {
 
 function isBatchTimedOut(batch: BrightDataBatchWithItems) {
     const startedAt = batch.triggered_at ?? batch.created_at
-    const timeoutMs = Number(process.env.BRIGHT_DATA_BATCH_TIMEOUT_MS ?? 30 * 60 * 1000)
+    const timeoutMs = Number(process.env.BRIGHT_DATA_BATCH_TIMEOUT_MS ?? 48 * 60 * 60 * 1000)
     return Date.now() - startedAt.getTime() > timeoutMs
 }
 

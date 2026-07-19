@@ -822,6 +822,10 @@ model BookDemo {
 
   scheduledAt DateTime
   timezone    String
+  countryCode String?
+  countryName String?
+  localTimeLabel String?
+  istTimeLabel   String?
 
   status      DemoStatus @default(PENDING)
 
