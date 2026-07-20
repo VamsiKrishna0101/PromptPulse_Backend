@@ -1,6 +1,6 @@
 import { Request, Response } from 'express'
 import { z } from 'zod'
-import { registerUser, verifyUserOtp, login as loginService } from './auth_service'
+import { refreshAccessToken, registerUser, verifyUserOtp, login as loginService } from './auth_service'
 
 const registerSchema = z.object({
     email: z.string().email('Invalid email format'),
@@ -89,6 +89,25 @@ export async function login(req: Request, res: Response): Promise<void> {
         res.status(200).json({ success: true, ...result })
     } catch (err: unknown) {
         const message = err instanceof Error ? err.message : 'Login failed'
+        res.status(401).json({ success: false, message })
+    }
+}
+
+const refreshSchema = z.object({
+    refresh_token: z.string().min(1),
+})
+
+export async function refresh(req: Request, res: Response): Promise<void> {
+    const parsed = refreshSchema.safeParse(req.body)
+    if (!parsed.success) {
+        res.status(401).json({ success: false, message: 'Refresh token is required' })
+        return
+    }
+
+    try {
+        res.status(200).json({ success: true, ...await refreshAccessToken(parsed.data.refresh_token) })
+    } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Session expired'
         res.status(401).json({ success: false, message })
     }
 }

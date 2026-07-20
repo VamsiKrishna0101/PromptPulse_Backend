@@ -5,6 +5,7 @@ import { generateAccessToken, generateRefreshToken } from '../../utils/jwt'
 import type { RegisterInput, RegisterResponse, LoginInput, LoginResponse } from './auth_types'
 import { sendVerificationOtpEmail } from '../email/email_service'
 import { ensureFreeTrialSubscription, getEffectivePlanAccess } from '../subscription/entitlements'
+import jwt from 'jsonwebtoken'
 
 
 export async function verifyUserOtp(email: string, otp: string) {
@@ -177,5 +178,28 @@ export async function login(input: LoginInput): Promise<LoginResponse> {
         },
         access_token: accessToken,
         refresh_token: refreshToken
+    }
+}
+
+export async function refreshAccessToken(refreshToken: string) {
+    let payload: { sub?: string }
+    try {
+        payload = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET!) as { sub?: string }
+    } catch {
+        throw new Error('Invalid or expired refresh token')
+    }
+
+    if (!payload.sub) throw new Error('Invalid refresh token')
+
+    const user = await prisma.user.findUnique({
+        where: { id: payload.sub },
+        select: { id: true, is_verified: true }
+    })
+
+    if (!user || !user.is_verified) throw new Error('Invalid refresh user')
+
+    return {
+        access_token: generateAccessToken(user.id),
+        refresh_token: generateRefreshToken(user.id),
     }
 }

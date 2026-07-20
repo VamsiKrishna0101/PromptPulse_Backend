@@ -3,6 +3,32 @@ import { enrichSource } from "./source_enrichment_service"
 import { buildChatWhere } from "../dashboard/dashboard_service"
 import type { DashboardFilters } from "../dashboard/dashboard_service"
 
+export type SourcePage<T> = {
+    items: T[]
+    page: number
+    page_size: number
+    total: number
+    total_pages: number
+}
+
+function paginate<T>(items: T[], page = 1, pageSize = 20): SourcePage<T> {
+    const safePageSize = Math.min(Math.max(pageSize, 1), 100)
+    const safePage = Math.max(page, 1)
+    const start = (safePage - 1) * safePageSize
+    return {
+        items: items.slice(start, start + safePageSize),
+        page: safePage,
+        page_size: safePageSize,
+        total: items.length,
+        total_pages: Math.max(1, Math.ceil(items.length / safePageSize))
+    }
+}
+
+function matchesSearch(value: string, search?: string) {
+    const needle = search?.trim().toLowerCase()
+    return !needle || value.toLowerCase().includes(needle)
+}
+
 export async function getTopSources(project_id: string, filters: DashboardFilters = {}) {
     const chats = await prisma.chat.findMany({
         where: { ...buildChatWhere(project_id, filters), run: { project_id } },
@@ -112,6 +138,19 @@ export async function getDomainReport(project_id: string, filters: DashboardFilt
     }).sort((a, b) => b.retrieval_rate - a.retrieval_rate)
 }
 
+export async function getDomainReportPage(
+    project_id: string,
+    filters: DashboardFilters = {},
+    options: { page?: number, pageSize?: number, search?: string } = {}
+) {
+    const rows = await getDomainReport(project_id, filters)
+    const search = options.search?.trim().toLowerCase()
+    const filtered = search
+        ? rows.filter(row => matchesSearch(`${row.domain} ${row.source_type}`, search))
+        : rows
+    return paginate(filtered, options.page, options.pageSize)
+}
+
 export async function getUrlReport(project_id: string, filters: DashboardFilters = {}) {
     const sources = await prisma.source.findMany({
         where: { chat: { ...buildChatWhere(project_id, filters), run: { project_id } } },
@@ -213,6 +252,25 @@ export async function getUrlReport(project_id: string, filters: DashboardFilters
         fetch_status: item.fetch_status,
         error_reason: item.error_reason
     })).sort((a, b) => b.retrievals - a.retrievals)
+}
+
+export async function getUrlReportPage(
+    project_id: string,
+    filters: DashboardFilters = {},
+    options: { page?: number, pageSize?: number, search?: string, domain?: string } = {}
+) {
+    const rows = await getUrlReport(project_id, filters)
+    const search = options.search?.trim().toLowerCase()
+    const domain = options.domain?.trim().toLowerCase()
+    const filtered = rows.filter(row => {
+        const domainMatch = !domain || row.domain.toLowerCase() === domain
+        const searchMatch = !search || matchesSearch(
+            `${row.url} ${row.domain} ${row.title ?? ""} ${row.url_type ?? ""}`,
+            search
+        )
+        return domainMatch && searchMatch
+    })
+    return paginate(filtered, options.page, options.pageSize)
 }
 
 export async function getUrlContent(project_id: string, url: string) {
@@ -514,6 +572,24 @@ export async function getSourceGaps(project_id: string) {
             suggested_action: buildSuggestedAction(url, url.mentionedOwnBrand, competitorHits)
         }
     }).filter(gap => gap.gap_score > 0).sort((a, b) => b.gap_score - a.gap_score)
+}
+
+export async function getSourceGapsPage(
+    project_id: string,
+    options: { page?: number, pageSize?: number, search?: string, domain?: string } = {}
+) {
+    const rows = await getSourceGaps(project_id)
+    const search = options.search?.trim().toLowerCase()
+    const domain = options.domain?.trim().toLowerCase()
+    const filtered = rows.filter(row => {
+        const domainMatch = !domain || row.domain.toLowerCase() === domain
+        const searchMatch = !search || matchesSearch(
+            `${row.url} ${row.domain} ${row.title ?? ""} ${row.url_type ?? ""}`,
+            search
+        )
+        return domainMatch && searchMatch
+    })
+    return paginate(filtered, options.page, options.pageSize)
 }
 
 function buildSuggestedAction(

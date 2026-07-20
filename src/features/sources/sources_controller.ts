@@ -1,5 +1,5 @@
 import { Request, Response } from 'express'
-import { getDomainReport, getSourceGaps, getSourceTrend, getTopSources, getUrlContent, getUrlReport } from './sources_service'
+import { getDomainReportPage, getSourceGapsPage, getSourceTrend, getTopSources, getUrlContent, getUrlReportPage } from './sources_service'
 import { assertProjectAccess } from '../projects/project_access'
 import type { AuthenticatedRequest } from '../../middleware/auth'
 import type { DashboardFilters } from '../dashboard/dashboard_service'
@@ -15,6 +15,17 @@ function parseFilters(query: Request['query']): DashboardFilters {
     if (query.mentioned === 'true' || query.mentioned === 'false') filters.mentioned = query.mentioned === 'true'
     if (query.cited === 'true' || query.cited === 'false') filters.cited = query.cited === 'true'
     return filters
+}
+
+function parsePageOptions(query: Request['query']) {
+    const page = typeof query.page === 'string' ? parseInt(query.page, 10) : 1
+    const pageSize = typeof query.page_size === 'string' ? parseInt(query.page_size, 10) : 20
+    return {
+        page: Number.isFinite(page) ? page : 1,
+        pageSize: Number.isFinite(pageSize) ? pageSize : 20,
+        search: typeof query.search === 'string' ? query.search : undefined,
+        domain: typeof query.domain === 'string' ? query.domain : undefined,
+    }
 }
 
 export const getTopSourcesController = async (req: Request, res: Response): Promise<void> => {
@@ -43,7 +54,7 @@ export const getDomainReportController = async (req: Request, res: Response): Pr
         const project_id = await getOwnedProjectId(req, res)
         if (!project_id) return
 
-        res.status(200).json(await getDomainReport(project_id, parseFilters(req.query)))
+        res.status(200).json(await getDomainReportPage(project_id, parseFilters(req.query), parsePageOptions(req.query)))
     } catch (error) {
         handleSourceError(error, res, 'Failed to retrieve domain report')
     }
@@ -54,7 +65,7 @@ export const getUrlReportController = async (req: Request, res: Response): Promi
         const project_id = await getOwnedProjectId(req, res)
         if (!project_id) return
 
-        res.status(200).json(await getUrlReport(project_id, parseFilters(req.query)))
+        res.status(200).json(await getUrlReportPage(project_id, parseFilters(req.query), parsePageOptions(req.query)))
     } catch (error) {
         handleSourceError(error, res, 'Failed to retrieve URL report')
     }
@@ -88,7 +99,7 @@ export const getSourceGapsController = async (req: Request, res: Response): Prom
         const project_id = await getOwnedProjectId(req, res)
         if (!project_id) return
 
-        res.status(200).json(await getSourceGaps(project_id))
+        res.status(200).json(await getSourceGapsPage(project_id, parsePageOptions(req.query)))
     } catch (error) {
         handleSourceError(error, res, 'Failed to retrieve source gaps')
     }
