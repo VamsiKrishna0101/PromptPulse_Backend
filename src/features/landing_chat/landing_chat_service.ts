@@ -1,13 +1,8 @@
 import crypto from "node:crypto"
 import prisma from "../../lib/prisma"
 import type { LandingChatIntent, LandingChatMessageInput, LandingChatResponse, LandingLeadInput } from "./landing_chat_types"
-
-const SUGGESTIONS = [
-    "How does the 14-day trial work?",
-    "Which AI engines do you track?",
-    "What plan should I choose?",
-    "Can I use this for agency clients?",
-]
+import { answerLandingChatWithAgent } from "./landing_chat_agent"
+import { LANDING_CHAT_DEFAULT_SUGGESTIONS } from "./landing_chat_knowledge"
 
 function normalize(value: string) {
     return value.toLowerCase().replace(/\s+/g, " ").trim()
@@ -16,6 +11,7 @@ function normalize(value: string) {
 function classifyIntent(message: string): LandingChatIntent {
     const text = normalize(message)
 
+    if (/\b(contact|support|help|human|person|email|message|reach|talk to (?:the )?team|promptpulse team|team contact)\b/.test(text)) return "support"
     if (/\b(price|pricing|cost|plan|plans|tiers|starter|growth|pro|monthly|annual|yearly|available)\b/.test(text)) return "pricing"
     if (/\b(trial|free|credit card|card required|14 day|fourteen)\b/.test(text)) return "trial"
     if (/\b(chatgpt|gemini|perplexity|copilot|google ai|ai mode|ai overview|engine|model)\b/.test(text)) return "engines"
@@ -23,7 +19,6 @@ function classifyIntent(message: string): LandingChatIntent {
     if (/\b(credit|credits|report|pdf|csv|export|invoice)\b/.test(text)) return "credits"
     if (/\b(agency|client|multi.?client|seat|team|white label)\b/.test(text)) return "agencies"
     if (/\b(demo|call|meeting|book|zoom|talk|sales)\b/.test(text)) return "demo"
-    if (/\b(help|support|human|contact|question|email)\b/.test(text)) return "support"
 
     return "general"
 }
@@ -95,16 +90,16 @@ function answerForIntent(intent: LandingChatIntent): LandingChatResponse {
     if (intent === "support") {
         return {
             intent,
-            answer: "For product or sales questions, send a message here with your email and we will follow up. Existing users can also use the in-app Help Agent after login for account-aware support.",
-            suggestions: ["I want a human to reply", "How do I contact support?", "Where is the help center?"],
-            cta: { label: "Open help center", href: "/help-center" },
+            answer: "You can contact the PromptPulse team by leaving a message here with your email, or by booking a demo if you want to talk through fit, pricing, or setup live. Existing users can also use the in-app Help Agent after login for account-aware support.",
+            suggestions: ["Leave a message", "Book a demo", "I am an existing user"],
+            cta: { label: "Book demo", href: "/book-demo" },
         }
     }
 
     return {
         intent,
         answer: "PromptPulse helps brands understand how they appear in AI search answers, which competitors win recommendations, which sources influence results, and what actions to take next. Ask about pricing, setup, AI engines, reports, credits, or agencies.",
-        suggestions: SUGGESTIONS,
+        suggestions: LANDING_CHAT_DEFAULT_SUGGESTIONS,
         cta: { label: "Start free", href: "/signup" },
     }
 }
@@ -115,9 +110,12 @@ export async function answerLandingChat(input: LandingChatMessageInput): Promise
         return {
             intent: "general",
             answer: "Ask me anything about PromptPulse pricing, setup, AI engines, reports, credits, or demos.",
-            suggestions: SUGGESTIONS,
+            suggestions: LANDING_CHAT_DEFAULT_SUGGESTIONS,
         }
     }
+
+    const agentAnswer = await answerLandingChatWithAgent(input)
+    if (agentAnswer) return agentAnswer
 
     return answerForIntent(classifyIntent(message))
 }

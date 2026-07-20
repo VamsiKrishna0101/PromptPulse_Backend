@@ -44,8 +44,12 @@ export async function getUserProjects(user_id: string) {
                             status: true,
                             prompt_id: true,
                             completed_at: true,
+                            created_at: true,
                             error_reason: true,
-                            retry_count: true
+                            retry_count: true,
+                            chat_id: true,
+                            geo_country_code: true,
+                            geo_city: true
                         },
                         orderBy: { created_at: "asc" }
                     }
