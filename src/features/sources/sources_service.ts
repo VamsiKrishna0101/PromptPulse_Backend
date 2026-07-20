@@ -6,7 +6,16 @@ import type { DashboardFilters } from "../dashboard/dashboard_service"
 export async function getTopSources(project_id: string, filters: DashboardFilters = {}) {
     const chats = await prisma.chat.findMany({
         where: { ...buildChatWhere(project_id, filters), run: { project_id } },
-        include: { sources: true }
+        select: {
+            id: true,
+            sources: {
+                select: {
+                    domain: true,
+                    source_type: true,
+                    is_cited: true,
+                },
+            },
+        },
     })
 
     const totalChats = chats.length
@@ -45,7 +54,18 @@ export async function getTopSources(project_id: string, filters: DashboardFilter
 export async function getDomainReport(project_id: string, filters: DashboardFilters = {}) {
     const chats = await prisma.chat.findMany({
         where: { ...buildChatWhere(project_id, filters), run: { project_id } },
-        include: { sources: true }
+        select: {
+            id: true,
+            sources: {
+                select: {
+                    domain: true,
+                    source_type: true,
+                    url_type: true,
+                    url: true,
+                    is_cited: true,
+                },
+            },
+        },
     })
 
     const totalChats = chats.length
@@ -214,7 +234,7 @@ export async function getUrlContent(project_id: string, url: string) {
                 url_type: matchedContent.url_type,
                 platform: matchedContent.platform,
                 subreddit: matchedContent.subreddit,
-                mentioned_brands: matchedContent.mentioned_brands
+                mentioned_brands: matchedContent.mentioned_brands ?? []
             }
         })
         return matchedContent
@@ -297,7 +317,17 @@ function safeDomain(url: string) {
 export async function getSourceTrend(project_id: string) {
     const chats = await prisma.chat.findMany({
         where: { run: { project_id } },
-        include: { sources: true },
+        select: {
+            id: true,
+            created_at: true,
+            sources: {
+                select: {
+                    domain: true,
+                    source_type: true,
+                    is_cited: true,
+                },
+            },
+        },
         orderBy: { created_at: "asc" }
     })
 
@@ -366,11 +396,29 @@ export async function getSourceGaps(project_id: string) {
                 run: { project_id }
             }
         },
-        include: {
-            source_url_content: true,
+        select: {
+            url: true,
+            domain: true,
+            title: true,
+            source_type: true,
+            url_type: true,
+            platform: true,
+            subreddit: true,
+            is_cited: true,
+            mentioned_brands: true,
+            source_url_content: {
+                select: {
+                    title: true,
+                    mentioned_brands: true,
+                },
+            },
             chat: {
-                include: {
-                    brand_mentions: true
+                select: {
+                    brand_mentions: {
+                        select: {
+                            brand_name: true,
+                        },
+                    },
                 }
             }
         }

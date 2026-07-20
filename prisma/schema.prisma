@@ -272,6 +272,7 @@ model RedditPost {
   @@unique([project_id, url])
   @@index([project_id, importance_score])
   @@index([project_id, subreddit])
+  @@index([project_id, user_id, importance_score, num_comments])
   @@index([user_id, created_at])
 }
 
@@ -486,6 +487,9 @@ model Chat {
 
   @@index([run_id, created_at])
   @@index([prompt_id, created_at])
+  @@index([prompt_id, brand_mentioned, created_at])
+  @@index([prompt_id, geo_country_code, created_at])
+  @@index([prompt_id, ai_model, created_at])
   @@index([ai_model, created_at])
 }
 
@@ -578,6 +582,7 @@ model BrandMention {
 
   @@index([chat_id])
   @@index([brand_name, chat_id])
+  @@index([chat_id, brand_name])
 }
 
 model Source {
@@ -601,6 +606,8 @@ model Source {
   updated_at            DateTime          @default(now()) @updatedAt
 
   @@index([chat_id, domain])
+  @@index([chat_id, is_cited])
+  @@index([chat_id, created_at])
   @@index([domain, created_at])
   @@index([source_url_content_id])
 }
@@ -910,4 +917,23 @@ model BookDemo {
 
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
+
+  @@index([scheduledAt])
+}
+
+model PublicChatLead {
+  id          String   @id @default(uuid())
+  name        String?
+  email       String?
+  company     String?
+  message     String
+  topic       String?
+  page_path   String?
+  user_agent  String?
+  ip_hash     String?
+  created_at  DateTime @default(now())
+
+  @@index([email, created_at])
+  @@index([topic, created_at])
+  @@index([created_at])
 }

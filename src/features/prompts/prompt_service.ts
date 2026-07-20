@@ -58,8 +58,16 @@ export async function getPromptsWithStats(input: GetPromptsInput) {
                     ...(cited === true ? { sources: { some: { is_cited: true } } } : {}),
                     ...(cited === false ? { sources: { none: { is_cited: true } } } : {}),
                 },
-                include: {
-                    brand_mentions: true,
+                select: {
+                    ai_model: true,
+                    brand_mentioned: true,
+                    brand_position: true,
+                    sentiment_score: true,
+                    brand_mentions: {
+                        select: {
+                            brand_name: true,
+                        },
+                    },
                 }
             }
         },

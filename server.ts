@@ -28,6 +28,7 @@ import actionQueueRoutes from './src/features/action_queue/action_queue_routes'
 import customerSupportAgentRoutes from './src/features/customer_support_agent/customer_support_agent_routes'
 import redditIntelligenceRoutes from './src/features/reddit_intelligence/reddit_intelligence_routes'
 import brandPreferenceRoutes from './src/features/brand_preferences/brand_preferences_routes'
+import landingChatRoutes from './src/features/landing_chat/landing_chat_routes'
 import { stripeWebhookController } from './src/features/subscription/subscription_controller'
 import { requireAdmin, requireAuth } from './src/middleware/auth'
 
@@ -82,6 +83,7 @@ app.use('/api/brand-preferences', requireAuth, brandPreferenceRoutes)
 app.use('/api/admin', requireAuth, requireAdmin, adminRoutes)
 app.use('/api/webanalytics', webAnalyticsRoutes)
 app.use('/api/demo', demoRoutes)
+app.use('/api/landing-chat', landingChatRoutes)
 
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`)

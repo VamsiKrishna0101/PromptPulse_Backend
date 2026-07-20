@@ -353,9 +353,24 @@ export async function getDashboardData({ project_id, filters }: { project_id: st
 
     const chats = await prisma.chat.findMany({
         where: chatWhere,
-        include: {
-            brand_mentions: true,
-            sources: true
+        select: {
+            created_at: true,
+            brand_mentioned: true,
+            brand_position: true,
+            sentiment_score: true,
+            brand_mentions: {
+                select: {
+                    brand_name: true,
+                    position: true,
+                    sentiment_score: true,
+                },
+            },
+            sources: {
+                select: {
+                    domain: true,
+                    source_type: true,
+                },
+            },
         }
     })
 
@@ -369,7 +384,14 @@ export async function getDashboardData({ project_id, filters }: { project_id: st
         const previousFilters = previousPeriodFilters(filters) ?? {}
         const previousWhere = buildChatWhere(project_id, previousFilters)
         previousWhere.created_at = previousPeriodDateWhere(filters)
-        const previousChats = await prisma.chat.findMany({ where: previousWhere })
+        const previousChats = await prisma.chat.findMany({
+            where: previousWhere,
+            select: {
+                brand_mentioned: true,
+                brand_position: true,
+                sentiment_score: true,
+            },
+        })
         previousBrandStats = aggregateOwnBrand(previousChats)
     } else {
         const split = splitAllTimeChats(chats)
@@ -434,8 +456,14 @@ export async function getVisibilityTimeSeries(project_id: string, filters?: Dash
 
     const chats = await prisma.chat.findMany({
         where: chatWhere,
-        include: {
-            brand_mentions: true,
+        select: {
+            created_at: true,
+            brand_mentioned: true,
+            brand_mentions: {
+                select: {
+                    brand_name: true,
+                },
+            },
             run: { select: { ran_at: true } }
         },
         orderBy: { created_at: 'asc' }
