@@ -2,6 +2,8 @@ import axios from "axios"
 import https from "https"
 import { SourceType } from "@prisma/client"
 import prisma from "../../lib/prisma"
+import { JSDOM } from "jsdom"
+import { Readability } from "@mozilla/readability"
 import { ingestSourceContentById } from "../rag/ingestion_service"
 
 type SourceUrlTypeValue =
@@ -118,7 +120,20 @@ export async function fetchAndExtractSource(url: string, brands: string[]): Prom
 
         const html = typeof response.data === "string" ? response.data : String(response.data)
         const title = extractTitle(html)
-        const text = normalizeText(stripHtml(html)).slice(0, Number(process.env.SOURCE_CONTENT_MAX_CHARS ?? 25000))
+        
+        let extractedHtml = html
+        try {
+            const doc = new JSDOM(html, { url: normalizedUrl })
+            const reader = new Readability(doc.window.document)
+            const article = reader.parse()
+            if (article && article.content) {
+                extractedHtml = article.content
+            }
+        } catch (e) {
+            console.warn("Readability parsing failed, falling back to raw html", e)
+        }
+
+        const text = normalizeText(stripHtml(extractedHtml)).slice(0, Number(process.env.SOURCE_CONTENT_MAX_CHARS ?? 25000))
         const snippet = buildSnippet(text, brands)
         const mentioned_brands = findMentionedBrands(text, brands)
 

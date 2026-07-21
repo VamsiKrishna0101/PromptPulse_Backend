@@ -604,7 +604,7 @@ model Source {
   chat_id               String
   chat                  Chat              @relation(fields: [chat_id], references: [id])
   source_url_content_id String?
-  source_url_content    SourceUrlContent? @relation(fields: [source_url_content_id], references: [id])
+  source_url_content    SourceUrlContent? @relation(fields: [source_url_content_id], references: [id], onDelete: SetNull)
   url                   String
   domain                String
   source_type           SourceType        @default(OTHER)

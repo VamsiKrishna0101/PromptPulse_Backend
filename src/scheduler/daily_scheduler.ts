@@ -1,6 +1,7 @@
 import "dotenv/config"
 import cron from "node-cron"
 import { enqueueDailyRuns } from "../features/scraping/scrape_orchestration_service"
+import { cleanupOldArticleContents } from "../features/scraping/article_cleanup_service"
 
 const expression = process.env.DAILY_SCRAPE_CRON ?? "0 0 * * *"
 const timezone = process.env.DAILY_SCRAPE_TIMEZONE ?? "Asia/Kolkata"
@@ -9,6 +10,9 @@ cron.schedule(expression, async () => {
     try {
         const runs = await enqueueDailyRuns()
         console.log(`Daily scrape scheduler enqueued ${runs.length} project runs`)
+        
+        // Clean up full article text older than 24h
+        await cleanupOldArticleContents()
     } catch (error) {
         console.error("Daily scrape scheduler failed", error)
     }
