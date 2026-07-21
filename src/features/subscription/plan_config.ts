@@ -10,6 +10,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
         sara: "full",
         exports: "none",
         credits: 0,
+        engine_limit: 3,
     },
     STARTER: {
         projects: 1,
@@ -19,6 +20,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
         sara: "basic",
         exports: "none",
         credits: 30,
+        engine_limit: 3,
     },
     GROWTH: {
         projects: 2,
@@ -28,6 +30,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
         sara: "full",
         exports: "basic",
         credits: 100,
+        engine_limit: 3,
     },
     PRO: {
         projects: 5,
@@ -37,6 +40,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
         sara: "advanced",
         exports: "full",
         credits: 275,
+        engine_limit: "all",
     },
 }
 

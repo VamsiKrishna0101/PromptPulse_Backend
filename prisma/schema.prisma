@@ -167,7 +167,7 @@ model User {
   billing_invoices BillingInvoice[]
 }
 
-model Project {
+  model Project {
   id             String       @id @default(uuid())
   brand_name     String       @unique
   brand_url      String
@@ -189,11 +189,25 @@ model Project {
   action_queue_items ActionQueueItem[]
   weekly_email_reports WeeklyEmailReport[]
   reddit_intelligence_runs RedditIntelligenceRun[]
-  reddit_posts RedditPost[]
-  brand_preference BrandPreference?
+    reddit_posts RedditPost[]
+    brand_preference BrandPreference?
+    engine_preferences ProjectEnginePreference[]
+  
+    @@index([user_id, created_at])
+  }
 
-  @@index([user_id, created_at])
-}
+  model ProjectEnginePreference {
+    id         String   @id @default(uuid())
+    project_id String
+    project    Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
+    engine     Engine
+    is_active  Boolean  @default(true)
+    created_at DateTime @default(now())
+    updated_at DateTime @updatedAt
+
+    @@unique([project_id, engine])
+    @@index([project_id, is_active])
+  }
 
 model BrandPreference {
   id                 String   @id @default(uuid())

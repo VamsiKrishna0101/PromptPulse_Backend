@@ -1,6 +1,7 @@
 import { Engine, ScrapeJobStatus, VisibilityRunStatus } from "@prisma/client"
 import prisma from "../../lib/prisma"
 import { ACTIVE_SCRAPE_ENGINES, isActiveScrapeEngine } from "./scrape_engine_policy"
+import { getProjectEngines } from "../project_engines/project_engines_service"
 
 export const MAX_MANUAL_SCRAPE_RETRIES = 2
 
@@ -26,11 +27,12 @@ export async function retryFailedJobsForRun(run_id: string) {
         orderBy: { created_at: "asc" },
     })
 
+    const selectedEngineSet = new Set(await getProjectEngines(run.project_id))
     const eligibleJobs = failedJobs.filter(job => (
-        isActiveScrapeEngine(job.engine) && job.retry_count < MAX_MANUAL_SCRAPE_RETRIES
+        isActiveScrapeEngine(job.engine) && selectedEngineSet.has(job.engine) && job.retry_count < MAX_MANUAL_SCRAPE_RETRIES
     ))
     const exhaustedJobs = failedJobs.filter(job => (
-        isActiveScrapeEngine(job.engine) && job.retry_count >= MAX_MANUAL_SCRAPE_RETRIES
+        isActiveScrapeEngine(job.engine) && selectedEngineSet.has(job.engine) && job.retry_count >= MAX_MANUAL_SCRAPE_RETRIES
     ))
     const unsupportedJobs = failedJobs.filter(job => job.engine === Engine.GOOGLE_AI_OVERVIEW)
 
@@ -55,7 +57,7 @@ export async function retryFailedJobsForRun(run_id: string) {
                 status: ScrapeJobStatus.FAILED,
                 chat_id: null,
                 retry_count: { lt: MAX_MANUAL_SCRAPE_RETRIES },
-                engine: { in: [...ACTIVE_SCRAPE_ENGINES] },
+                engine: { in: [...ACTIVE_SCRAPE_ENGINES].filter(engine => selectedEngineSet.has(engine)) },
             },
             data: {
                 status: ScrapeJobStatus.QUEUED,

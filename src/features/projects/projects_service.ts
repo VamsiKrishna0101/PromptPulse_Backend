@@ -33,6 +33,13 @@ export async function getUserProjects(user_id: string) {
                 },
                 orderBy: { created_at: "asc" }
             },
+            engine_preferences: {
+                where: { is_active: true },
+                select: {
+                    engine: true
+                },
+                orderBy: { created_at: "asc" }
+            },
             runs: {
                 take: 1,
                 orderBy: { ran_at: "desc" },

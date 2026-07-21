@@ -1,8 +1,6 @@
 import { Request, Response } from "express"
 import type { AuthenticatedRequest } from "../../middleware/auth"
-import { spendCredits, refundCredits } from "../credits/credits_service"
 import { assertProjectAccess } from "../projects/project_access"
-import { CREDIT_COSTS } from "../subscription/plan_config"
 import { canExport } from "../subscription/subscription_service"
 import { createExcelExport, createPdfExport, createGeoArticlePdf } from "./export_service"
 import type { ExportFilters, ExportResource } from "./export_types"
@@ -35,55 +33,25 @@ export async function downloadCsvExportController(req: Request, res: Response): 
             return
         }
 
-        const cost = format === "pdf" ? CREDIT_COSTS.dashboard_export_pdf : CREDIT_COSTS.dashboard_export_xlsx
-        const action = format === "pdf" ? "dashboard_export_pdf" : "dashboard_export_xlsx"
-        const idempotencyKey = readIdempotencyKey(req)
-            ?? `export:${userId}:${project_id}:${resource}:${format}:${stableFiltersKey(filters)}:${Date.now()}`
+        if (format === "pdf") {
+            const result = await createPdfExport({ project_id, resource, filters })
+            res.setHeader("Content-Type", "application/pdf")
+            res.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`)
+            res.status(200).send(result.content)
+            return
+        }
 
-        await spendCredits({
-            userId,
-            amount: cost,
-            action,
-            description: `${resource} ${format.toUpperCase()} export`,
-            idempotencyKey,
-            metadata: { project_id, resource, format, filters },
-        })
-
-        try {
-            if (format === "pdf") {
-                const result = await createPdfExport({ project_id, resource, filters })
-                res.setHeader("Content-Type", "application/pdf")
-                res.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`)
-                res.status(200).send(result.content)
-                return
-            }
-
-            if (format === "xlsx" || format === "csv") {
-                const result = await createExcelExport({ project_id, resource, filters })
-                res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                res.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`)
-                res.status(200).send(result.content)
-                return
-            }
-        } catch (error) {
-            await refundCredits({
-                userId,
-                amount: cost,
-                action: "credit_refund",
-                description: `Refund for failed ${resource} ${format.toUpperCase()} export`,
-                idempotencyKey: `refund:${idempotencyKey}`,
-                metadata: { project_id, resource, format },
-            })
-            throw error
+        if (format === "xlsx" || format === "csv") {
+            const result = await createExcelExport({ project_id, resource, filters })
+            res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            res.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`)
+            res.status(200).send(result.content)
+            return
         }
 
     } catch (error) {
         if (error instanceof Error && error.message === "PROJECT_NOT_FOUND") {
             res.status(404).json({ error: "Project not found" })
-            return
-        }
-        if (error instanceof Error && error.message.startsWith("Not enough credits")) {
-            res.status(402).json({ error: error.message })
             return
         }
         console.error("Export failed", error)
@@ -108,31 +76,7 @@ export async function exportGeoArticlePdfController(req: Request, res: Response)
             return
         }
 
-        const cost = CREDIT_COSTS.geo_article_pdf
-        const idempotencyKey = readIdempotencyKey(req) ?? `geoarticle-pdf:${userId}:${project_id}:${Date.now()}`
-        await spendCredits({
-            userId,
-            amount: cost,
-            action: "geo_article_pdf",
-            description: "GEO article PDF export",
-            idempotencyKey,
-            metadata: { project_id },
-        })
-
-        let pdf: Awaited<ReturnType<typeof createGeoArticlePdf>>
-        try {
-            pdf = await createGeoArticlePdf({ project_id, brief, article })
-        } catch (error) {
-            await refundCredits({
-                userId,
-                amount: cost,
-                action: "credit_refund",
-                description: "Refund for failed GEO article PDF export",
-                idempotencyKey: `refund:${idempotencyKey}`,
-                metadata: { project_id },
-            })
-            throw error
-        }
+        const pdf = await createGeoArticlePdf({ project_id, brief, article })
 
         res.setHeader("Content-Type", "application/pdf")
         res.setHeader("Content-Disposition", `attachment; filename="${pdf.filename}"`)
@@ -140,10 +84,6 @@ export async function exportGeoArticlePdfController(req: Request, res: Response)
     } catch (error) {
         if (error instanceof Error && error.message === "PROJECT_NOT_FOUND") {
             res.status(404).json({ error: "Project not found" })
-            return
-        }
-        if (error instanceof Error && error.message.startsWith("Not enough credits")) {
-            res.status(402).json({ error: error.message })
             return
         }
         console.error("[exportGeoArticlePdfController] Error:", error)
@@ -205,14 +145,4 @@ function parsePositiveInt(value: unknown) {
     const parsed = Number.parseInt(value, 10)
     if (!Number.isFinite(parsed) || parsed <= 0) return undefined
     return parsed
-}
-
-function readIdempotencyKey(req: Request) {
-    const header = req.header("Idempotency-Key")
-    if (header?.trim()) return header.trim().slice(0, 180)
-    return undefined
-}
-
-function stableFiltersKey(filters: ExportFilters) {
-    return JSON.stringify(Object.entries(filters).sort(([a], [b]) => a.localeCompare(b)))
 }

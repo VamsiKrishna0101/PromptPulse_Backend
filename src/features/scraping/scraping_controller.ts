@@ -5,6 +5,7 @@ import { assertProjectAccess } from "../projects/project_access"
 import type { AuthenticatedRequest } from "../../middleware/auth"
 import { canRunRefresh } from "../subscription/subscription_service"
 import { isActiveScrapeEngine } from "./scrape_engine_policy"
+import { assertCanUseProjectEngines } from "../project_engines/project_engines_service"
 
 export const enqueueProjectRunController = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -37,6 +38,10 @@ export const enqueueProjectRunController = async (req: Request, res: Response): 
             return
         }
 
+        if (parsedEngines?.length) {
+            await assertCanUseProjectEngines(userId, parsedEngines)
+        }
+
         const result = await enqueueProjectRun({
             project_id,
             prompt_ids: Array.isArray(prompt_ids) ? prompt_ids : undefined,
@@ -48,6 +53,10 @@ export const enqueueProjectRunController = async (req: Request, res: Response): 
     } catch (error) {
         if (error instanceof Error && error.message === "PROJECT_NOT_FOUND") {
             res.status(404).json({ error: "Project not found" })
+            return
+        }
+        if (error instanceof Error && (error.message.includes("Select at least") || error.message.includes("plan can track"))) {
+            res.status(400).json({ error: error.message })
             return
         }
         res.status(500).json({

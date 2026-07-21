@@ -3,20 +3,22 @@ PromptPulse is an AI visibility and GEO platform for teams that want to understa
 
 Core capabilities:
 - Tracks brand mentions, ranking position, sentiment, competitors, sources, and citations across AI search engines.
-- Supported AI engines: ChatGPT, Gemini, Perplexity, Google AI Mode, Google AI Overviews, and Copilot.
+- Supported AI engines: ChatGPT, Gemini, Perplexity, Google AI Mode, and Copilot.
+- Starter and Growth projects choose any 3 engines. Pro projects can track all available engines.
 - Includes dashboards, competitor tracking, source intelligence, reports, exports, weekly email reports, AI Workspace, action queue, Reddit Intelligence, and Sara for GEO strategy after login.
-- Setup flow: create account, add brand, choose primary market/country, review or upload prompts, add competitors, then launch visibility runs.
+- Setup flow: create account, add brand, choose primary market/country, review or upload prompts, choose AI engines, add competitors, then launch visibility runs.
 
 Trial and plans:
 - Free trial lasts 14 days and does not require a credit card.
 - Trial gives Growth-style capabilities with a smaller prompt cap so users can test value before paying.
-- Starter: $29/mo, 1 project, 20 prompts, 5 competitors, twice-weekly refresh.
-- Growth: $59/mo, 2 projects, 50 shared prompts, 12 competitors, daily refresh, Sara, reports, action queue, source enrichment, and credits.
-- Pro: $129/mo, 5 projects, 125 shared prompts, unlimited competitors, daily refresh, weekly email reports, full exports, advanced workflows, and more credits.
+- Starter: $29/mo, 1 project, 20 prompts, choose 3 AI engines, 5 competitors, twice-weekly refresh.
+- Growth: $59/mo, 2 projects, 50 shared prompts, choose 3 AI engines, 12 competitors, daily refresh, Sara, reports, action queue, source enrichment, secure MCP connector for 1 external assistant, and credits.
+- Pro: $129/mo, 5 projects, 125 shared prompts, all 5 AI engines, unlimited competitors, daily refresh, weekly email reports, full exports, advanced MCP connector limits, advanced workflows, and more credits.
 - Enterprise is custom for larger prompt/project volume, priority runs, onboarding, and custom needs.
 
 Credits:
-- Credits are used for heavier generated outputs and premium intelligence workflows such as reports, PDFs, exports, and scans.
+- Credits are used for heavier generated outputs and premium intelligence workflows such as reports, content briefs, Reddit scans, and strategy actions.
+- CSV/PDF exports are plan features and do not consume credits.
 - Core scheduled visibility tracking is governed by plan limits.
 
 Contact and support:

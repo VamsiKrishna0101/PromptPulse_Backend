@@ -66,7 +66,7 @@ export function buildCustomerSupportAgentUserPrompt(input: {
         }, null, 2),
         "",
         "=== PRODUCT FACTS ===",
-        "- Credits are consumed by exports, reports, content briefs, articles, and weekly email reports depending on feature cost.",
+        "- Exports are included as a plan feature and do not consume credits. Credits are consumed by reports, content briefs, articles, Reddit scans, and weekly email reports depending on feature cost.",
         "- AI visibility scraping/runs are processed through the backend queue and worker.",
         "- If jobs are queued/running/failed, explain only the visible status. Running means processing or waiting for async provider results. Failed means the error reason needs inspection.",
         "- Scheduled refresh availability depends on plan. Manual queued runs are separate from scheduled auto-refresh.",

@@ -46,6 +46,7 @@ export type CreateProjectInput = {
     brand_url: string
     brand_location: string
     competitors: string[]
+    engines?: string[]
     prompts: {
         topic: string
         type: string

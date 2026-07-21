@@ -11,6 +11,8 @@ const onboardingPromptSchema = z.object({
     source: z.enum(['GENERATED', 'CUSTOMER']).optional(),
 })
 
+const onboardingEngineSchema = z.array(z.string().trim().min(2).max(40)).min(1).max(5)
+
 export const researchBrandController = async (req: Request, res: Response): Promise<void> => {
     try {
         const { brand_name, brand_url } = req.body
@@ -57,13 +59,15 @@ export const createProjectController = async (req: Request, res: Response): Prom
     try {
         const { brand_name, brand_url, brand_location, competitors } = req.body
         const parsedPrompts = z.array(onboardingPromptSchema).min(1).max(500).safeParse(req.body.prompts)
+        const parsedEngines = onboardingEngineSchema.safeParse(req.body.engines)
         const user_id = (req as AuthenticatedRequest).user.id
 
         const missing_fields = [
             !brand_name ? 'brand_name' : null,
             !brand_url ? 'brand_url' : null,
             !brand_location ? 'brand_location' : null,
-            !parsedPrompts.success ? 'prompts' : null
+            !parsedPrompts.success ? 'prompts' : null,
+            !parsedEngines.success ? 'engines' : null
         ].filter(Boolean)
 
         if (missing_fields.length > 0) {
@@ -80,6 +84,7 @@ export const createProjectController = async (req: Request, res: Response): Prom
             brand_url,
             brand_location,
             competitors: competitors || [],
+            engines: parsedEngines.success ? parsedEngines.data : [],
             prompts: parsedPrompts.success ? parsedPrompts.data : []
         })
 

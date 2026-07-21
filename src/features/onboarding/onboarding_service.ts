@@ -5,6 +5,8 @@ import { crawlBrandWebsite } from "./brand_crawler_service";
 import type { BrandResearchInput, PromptInput, CreateProjectInput } from "./onboarding_types";
 import { assertCanAddCompetitors, assertCanCreateProjectWithPrompts } from "../subscription/subscription_service";
 import { getGeoCountryByName } from "../geo/countries";
+import { assertCanUseProjectEngines } from "../project_engines/project_engines_service";
+import { SELECTABLE_PROJECT_ENGINES } from "../project_engines/project_engine_policy";
 
 export async function researchbrand(input: BrandResearchInput) {
     const { brand_url, brand_name } = input
@@ -87,6 +89,7 @@ export async function createProject(input: CreateProjectInput) {
 
         await assertCanCreateProjectWithPrompts(user_id, activePromptCount)
         await assertCanAddCompetitors(user_id, competitors.length)
+        const selectedEngines = await assertCanUseProjectEngines(user_id, input.engines)
 
         const country = getGeoCountryByName(brand_location)
         if (!country) {
@@ -125,6 +128,16 @@ export async function createProject(input: CreateProjectInput) {
                     source: prompt.source,
                     tags: prompt.selected ? ['onboarding:selected'] : ['onboarding:unused'],
                 })),
+            })
+
+            const selectedEngineSet = new Set(selectedEngines)
+            await transaction.projectEnginePreference.createMany({
+                data: SELECTABLE_PROJECT_ENGINES.map(engine => ({
+                    project_id: createdProject.id,
+                    engine,
+                    is_active: selectedEngineSet.has(engine),
+                })),
+                skipDuplicates: true,
             })
 
             return createdProject

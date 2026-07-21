@@ -45,7 +45,7 @@ function answerForIntent(intent: LandingChatIntent): LandingChatResponse {
     if (intent === "engines") {
         return {
             intent,
-            answer: "PromptPulse tracks AI visibility across ChatGPT, Gemini, Perplexity, Google AI Mode, Google AI Overviews, and Copilot. We measure brand mentions, position, sentiment, sources, competitors, and prompt-level performance.",
+            answer: "PromptPulse tracks AI visibility across ChatGPT, Gemini, Perplexity, Google AI Mode, and Copilot. Starter and Growth teams choose the 3 engines that matter most. Pro can track all available engines.",
             suggestions: ["How often do runs refresh?", "Do you track sources?", "Can I choose country targeting?"],
             cta: { label: "Start tracking", href: "/signup" },
         }
@@ -63,7 +63,7 @@ function answerForIntent(intent: LandingChatIntent): LandingChatResponse {
     if (intent === "credits") {
         return {
             intent,
-            answer: "Credits are used for premium generated outputs like reports, PDFs, and intelligence workflows. Core visibility tracking is controlled by your plan limits, while credits cover heavier AI-generated deliverables.",
+            answer: "Credits are used for premium generated outputs like reports, content briefs, Reddit scans, and intelligence workflows. CSV/PDF exports are plan features and do not consume credits.",
             suggestions: ["Do exports use credits?", "What reports are included?", "Which plan has more credits?"],
             cta: { label: "View plans", href: "/pricing" },
         }
