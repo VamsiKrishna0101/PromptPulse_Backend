@@ -213,6 +213,11 @@ function handleSaraError(error: unknown, res: Response, fallback: string) {
         return
     }
 
+    if (error instanceof Error && error.message === "SARA_DAILY_LIMIT_REACHED") {
+        res.status(429).json({ error: "SARA_DAILY_LIMIT_REACHED" })
+        return
+    }
+
     console.error(fallback, error)
     res.status(500).json({ error: fallback })
 }
@@ -232,6 +237,10 @@ function serializeSaraStreamError(error: unknown, fallback: string) {
 
     if (error instanceof Error && error.message === "SARA_CONVERSATION_NOT_FOUND") {
         return { error: "Sara conversation not found" }
+    }
+
+    if (error instanceof Error && error.message === "SARA_DAILY_LIMIT_REACHED") {
+        return { error: "SARA_DAILY_LIMIT_REACHED" }
     }
 
     console.error(fallback, error)

@@ -4,6 +4,7 @@ import { ingestProjectKnowledge } from "../rag/ingestion_service"
 import { searchSaraKnowledge, type QdrantPayload } from "../rag/qdrant_service"
 import prisma from "../../lib/prisma"
 import { buildSaraContextPacket, type SaraContextPacket } from "./context/sara_context_service"
+import { getEffectivePlanAccess } from "../subscription/entitlements"
 
 type SaraDebugTrace = {
     internal_mcp: {
@@ -16,6 +17,28 @@ type SaraDebugTrace = {
         result_count: number
         document_types: string[]
         top_titles: string[]
+    }
+}
+
+async function checkSaraDailyLimit(user_id: string) {
+    const { limits } = await getEffectivePlanAccess(user_id)
+    if (limits.sara_daily_limit === "unlimited") return
+
+    const startOfToday = new Date()
+    startOfToday.setHours(0, 0, 0, 0)
+
+    const count = await prisma.saraMessage.count({
+        where: {
+            role: "USER",
+            created_at: { gte: startOfToday },
+            conversation: {
+                user_id: user_id
+            }
+        }
+    })
+
+    if (count >= limits.sara_daily_limit) {
+        throw new Error("SARA_DAILY_LIMIT_REACHED")
     }
 }
 
@@ -51,6 +74,8 @@ export async function chatWithSara(input: {
     page_context?: string
     limit?: number
 }) {
+    await checkSaraDailyLimit(input.user_id)
+
     const readiness = await getSaraReadiness(input.project_id)
     if (!readiness.is_ready) {
         const error = new Error("SARA_NOT_READY")
@@ -150,6 +175,8 @@ export async function chatWithSaraStream(input: {
     onReady?: (payload: { conversation_id: string }) => void
     onToken: (token: string) => void
 }) {
+    await checkSaraDailyLimit(input.user_id)
+
     const readiness = await getSaraReadiness(input.project_id)
     if (!readiness.is_ready) {
         const error = new Error("SARA_NOT_READY")

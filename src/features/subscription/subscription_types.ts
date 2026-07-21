@@ -9,6 +9,7 @@ export type PlanLimits = {
     competitors: number | "unlimited"
     refreshes_per_week: number | "daily"
     sara: "none" | "basic" | "full" | "advanced"
+    sara_daily_limit: number | "unlimited"
     exports: "none" | "basic" | "full"
     credits: number
     engine_limit: number | "all"
