@@ -197,7 +197,7 @@ async function processScrapeJob(scrape_job_id: string) {
             status,
             chat_id,
             answer_text: result.answer_text,
-            raw_text: result.raw_text,
+            raw_text: null, // Not stored - saves significant DB space (was storing full BrightData JSON / page body)
             citations: result.citations,
             screenshot_path: result.screenshot_path,
             retry_count: result.retry_count ?? 0,

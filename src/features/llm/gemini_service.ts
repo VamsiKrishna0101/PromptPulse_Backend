@@ -79,22 +79,21 @@ export async function generateBrandPrompts(
     const systemPrompt = buildBrandPromptGenerationSystemPrompt()
     const userPrompt = buildBrandPromptGenerationUserPrompt(brand_name, brand_url, brand_data)
 
-    if (hasBedrockGateway()) {
-        return parseJson<{ prompts: { topic: string; type: string; text: string }[] }>(
-            await generateWithBedrockGateway(systemPrompt, userPrompt, {
-                temperature: 0.25,
-                maxTokens: 8192,
-                responseFormat: "json_object",
-            })
+    try {
+        const result = await model.generateContent([
+            { text: systemPrompt },
+            { text: userPrompt },
+        ])
+
+        return parseJson<{ prompts: { topic: string; type: string; text: string }[] }>(result.response.text())
+    } catch (error) {
+        console.error('[generateBrandPrompts] Gemini failed — no fallback available:', error)
+        throw new Error(
+            error instanceof Error
+                ? `Prompt generation failed: ${error.message}`
+                : 'Prompt generation failed: Gemini returned no usable response.'
         )
     }
-
-    const result = await model.generateContent([
-        { text: systemPrompt },
-        { text: userPrompt },
-    ])
-
-    return parseJson<{ prompts: { topic: string; type: string; text: string }[] }>(result.response.text())
 }
 
 export async function summarizeBrandResearch(
@@ -204,7 +203,8 @@ function repairTruncatedJson(raw: string): unknown {
     throw new SyntaxError(`Could not repair truncated JSON (length=${raw.length})`)
 }
 
-function parseJson<T>(raw: string): T {
+function parseJson<T>(raw: string | undefined | null): T {
+    if (!raw) throw new Error('LLM returned an empty response — content may have been blocked or the model hit a token limit.')
     const cleaned = raw
         .trim()
         .replace(/^```json\n?/i, '')

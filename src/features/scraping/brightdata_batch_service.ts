@@ -314,7 +314,7 @@ async function completeBatchFromRecords(batch: BrightDataBatchWithItems, records
                         status: ScrapeJobStatus.SUCCESS,
                         chat_id: chat.id,
                         answer_text: result.answer_text,
-                        raw_text: result.raw_text,
+                        raw_text: null, // Not stored - saves significant DB space (was storing full BrightData JSON)
                         citations: result.citations,
                         screenshot_path: result.screenshot_path,
                         error_reason: result.error_reason,
