@@ -13,7 +13,7 @@ import type {
 } from "./customer_support_agent_types"
 
 const DEFAULT_ACTIONS = [
-    "Explain my subscription",
+    "Explain my wallet",
     "Why are my credits 0?",
     "Scraping/report failed",
     "Need manual review",
@@ -38,7 +38,7 @@ export async function chatWithCustomerSupportAgent(
             ticket: null,
             category: "subscription",
             confidence: "high",
-            suggested_actions: ["Compare Starter and Growth", "What is included in Pro?", "Explain my current limits", "How do credits work?"],
+                    suggested_actions: ["How do credits work?", "View my wallet balance", "What actions cost credits?", "Buy more credits"],
         }
     }
     if (isJobStatusQuestion(cleanMessage)) {
@@ -49,7 +49,7 @@ export async function chatWithCustomerSupportAgent(
             ticket: null,
             category: "scraping",
             confidence: "high",
-            suggested_actions: ["Explain my subscription", "What plans are available?", "How do manual runs work?", "Create manual review ticket"],
+                    suggested_actions: ["Explain my wallet", "What actions cost credits?", "How do manual runs work?", "Create manual review ticket"],
         }
     }
 
@@ -279,37 +279,12 @@ function isJobStatusQuestion(message: string) {
 }
 
 function buildAvailablePlansAnswer(context: Awaited<ReturnType<typeof buildCustomerSupportAgentContext>>) {
-    const currentPlan = context.user.plan
-    const effectivePlan = context.user.effective_plan
-    const currentPlanLabel = describeCurrentPlan(context)
-    const rows = context.available_plans.map(plan => {
-        const price = plan.monthly_price_usd === "custom" ? "Custom" : plan.monthly_price_usd === 0 ? "$0" : `$${plan.monthly_price_usd}/mo`
-        const refresh = plan.limits.refreshes_per_week === "daily" ? "Daily" : plan.limits.refreshes_per_week === 0 ? "No auto-refresh" : `${plan.limits.refreshes_per_week}x/week`
-        const competitors = plan.limits.competitors === "unlimited" ? "Unlimited" : `${plan.limits.competitors}`
-        const trial = plan.trial_days ? `${plan.trial_days}-day trial` : "No trial"
-        const currentBadge = plan.id === currentPlan
-            ? " (current)"
-            : context.subscription.trial_active && plan.id === effectivePlan
-                ? " (trial access)"
-                : ""
-        return `| ${plan.name}${currentBadge} | ${price} | ${plan.limits.projects} | ${plan.limits.prompts} | ${competitors} | ${refresh} | ${plan.limits.credits} | ${trial} |`
-    })
-
     return [
-        `You are currently on **${currentPlanLabel}**.`,
-        context.subscription.trial_active
-            ? `Your trial gives Growth-style access for ${context.subscription.trial_days_left} more day${context.subscription.trial_days_left === 1 ? "" : "s"}, with your prompt cap set by the account context.`
-            : "",
+        "PromptPulse uses one credit wallet for every account. Starter, Growth, and Pro are monthly credit bundles; all paid plans include the full product, and the main difference is capacity.",
         "",
-        "Here are the available PromptPulse plans:",
+        `You currently have **${context.usage.credits_remaining} credits remaining**. Starter includes 2,250 credits, Growth includes 5,000 credits with +500 bonus credits, and Pro includes 13,000 credits with +1,750 bonus credits.`,
         "",
-        "| Plan | Price | Projects | Prompts | Competitors | Refresh | Monthly credits | Trial |",
-        "| --- | ---: | ---: | ---: | ---: | --- | ---: | --- |",
-        ...rows,
-        "",
-        "**Quick recommendation:** Starter is for one brand and light monitoring, Growth is the best fit for daily monitoring with Google AI Mode/Copilot, and Pro is for teams or agencies managing more projects and competitors.",
-        "",
-        `Your current usage: ${context.usage.projects}/${context.limits.projects} projects, ${context.usage.prompts}/${context.limits.prompts} prompts, ${context.usage.competitors}/${formatLimit(context.limits.competitors)} competitors, and ${context.usage.credits_remaining} credits remaining.`,
+        "You can buy a monthly credit bundle or add PAYG top-ups anytime from Billing & Credits. Your trial credits are added after email verification.",
     ].join("\n")
 }
 
@@ -319,7 +294,6 @@ function formatLimit(value: number | "unlimited") {
 
 function buildJobStatusAnswer(context: Awaited<ReturnType<typeof buildCustomerSupportAgentContext>>) {
     const project = context.selected_project
-    const currentPlanLabel = describeCurrentPlan(context)
     const refresh = context.limits.refreshes_per_week === "daily"
         ? "daily auto-refresh"
         : context.limits.refreshes_per_week === 0
@@ -330,7 +304,7 @@ function buildJobStatusAnswer(context: Awaited<ReturnType<typeof buildCustomerSu
         return [
             "I do not see a selected project in your account context yet.",
             "",
-            `Your current **${currentPlanLabel}** access has **${refresh}**. Manual runs can still be triggered when the project and prompt limits allow it.`,
+            `Your PAYG workspace has **${refresh}**. Manual runs can be triggered when the project has prompts configured and the wallet has enough credits.`,
             "",
             "If you expected a run for an existing project, open that project first and ask me again, or reply **yes** and I can create a manual review ticket.",
         ].join("\n")
@@ -350,9 +324,9 @@ function buildJobStatusAnswer(context: Awaited<ReturnType<typeof buildCustomerSu
         "| --- | ---: |",
         ...statusRows,
         "",
-        `Your current **${currentPlanLabel}** access has **${refresh}**.`,
+        `Your PAYG workspace has **${refresh}**.`,
         "",
-        "Important: the plan controls whether scheduled refreshes run automatically. It does **not** mean manual jobs get stuck because you are on Free, and upgrading will not automatically repair failed jobs.",
+        "Scheduled refresh behavior depends on workspace settings and available credits, not a subscription tier.",
         "",
     ]
 
@@ -367,7 +341,7 @@ function buildJobStatusAnswer(context: Awaited<ReturnType<typeof buildCustomerSu
             "If you want the team to inspect these jobs, reply **yes** and I will create a manual review ticket with this job context attached."
         )
     } else if (context.limits.refreshes_per_week === 0) {
-        lines.push("No auto-refresh is expected on Free. To get scheduled runs, upgrade to Starter for 2x/week refresh or Growth/Pro for daily refresh.")
+        lines.push("Scheduled refresh behavior depends on workspace settings and available credits, not a subscription tier.")
     } else {
         lines.push("I do not see stuck or failed jobs in this project context right now.")
     }
@@ -375,22 +349,12 @@ function buildJobStatusAnswer(context: Awaited<ReturnType<typeof buildCustomerSu
     return lines.join("\n")
 }
 
-function describeCurrentPlan(context: Awaited<ReturnType<typeof buildCustomerSupportAgentContext>>) {
-    if (context.subscription.trial_active) {
-        return `Free Trial (${context.user.effective_plan} access)`
-    }
-    if (context.subscription.status === "TRIAL_EXPIRED") {
-        return "Free Trial ended"
-    }
-    return context.user.plan
-}
-
 function fallbackAnswer(message: string, category: SupportCategory, reason: string | null) {
     if (reason) {
         return "This looks like something our team should review directly. I can create a manual review ticket with your account context and the details from this chat."
     }
     if (category === "subscription" || category === "credits") {
-        return "I can help explain your current plan, limits, credits, and usage from your account context. If something looks incorrect, I can create a manual review ticket for the team."
+        return "I can help explain your PAYG wallet, credit usage, and account activity. If something looks incorrect, I can create a manual review ticket for the team."
     }
     return message
         ? "I can help with that. If this needs account investigation, I will create a manual review ticket with the relevant context."

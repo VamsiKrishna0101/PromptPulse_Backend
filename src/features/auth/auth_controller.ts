@@ -1,6 +1,6 @@
 import { Request, Response } from 'express'
 import { z } from 'zod'
-import { refreshAccessToken, registerUser, verifyUserOtp, login as loginService } from './auth_service'
+import { refreshAccessToken, registerUser, resetPasswordWithOtp, sendForgotPasswordOtp, verifyUserOtp, login as loginService } from './auth_service'
 
 const registerSchema = z.object({
     email: z.string().email('Invalid email format'),
@@ -75,6 +75,20 @@ const loginSchema = z.object({
     password: z.string()
 })
 
+const forgotPasswordOtpSchema = z.object({
+    email: z.string().email('Invalid email format'),
+})
+
+const resetPasswordSchema = z.object({
+    email: z.string().email('Invalid email format'),
+    otp: z.string().length(6, 'OTP must be exactly 6 digits'),
+    password: z
+        .string()
+        .min(8, 'Password must be at least 8 characters')
+        .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+        .regex(/[0-9]/, 'Password must contain at least one number'),
+})
+
 export async function login(req: Request, res: Response): Promise<void> {
     const parsed = loginSchema.safeParse(req.body)
     if (!parsed.success) {
@@ -90,6 +104,50 @@ export async function login(req: Request, res: Response): Promise<void> {
     } catch (err: unknown) {
         const message = err instanceof Error ? err.message : 'Login failed'
         res.status(401).json({ success: false, message })
+    }
+}
+
+export async function forgotPasswordSendOtp(req: Request, res: Response): Promise<void> {
+    const parsed = forgotPasswordOtpSchema.safeParse(req.body)
+    if (!parsed.success) {
+        res.status(400).json({
+            success: false,
+            errors: parsed.error.flatten().fieldErrors,
+        })
+        return
+    }
+
+    try {
+        const result = await sendForgotPasswordOtp(parsed.data.email)
+        res.status(200).json({ success: true, ...result })
+    } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Failed to send password reset OTP'
+        const isEmailDeliveryError = message.includes('Brevo email send failed')
+        res.status(isEmailDeliveryError ? 502 : 500).json({
+            success: false,
+            message: isEmailDeliveryError
+                ? "We could not send your password reset code right now. Please try again in a moment."
+                : message,
+        })
+    }
+}
+
+export async function forgotPasswordReset(req: Request, res: Response): Promise<void> {
+    const parsed = resetPasswordSchema.safeParse(req.body)
+    if (!parsed.success) {
+        res.status(400).json({
+            success: false,
+            errors: parsed.error.flatten().fieldErrors,
+        })
+        return
+    }
+
+    try {
+        const result = await resetPasswordWithOtp(parsed.data.email, parsed.data.otp, parsed.data.password)
+        res.status(200).json({ success: true, ...result })
+    } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Failed to reset password'
+        res.status(400).json({ success: false, message })
     }
 }
 

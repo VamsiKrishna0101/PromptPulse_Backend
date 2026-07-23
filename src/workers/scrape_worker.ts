@@ -10,6 +10,8 @@ import { SCRAPE_QUEUE_NAME, type ScrapeQueueJob } from "../queues/scrape_queue"
 import { runPrompt } from "../features/dashboard/dashboard_service"
 import { buildGeoPromptText } from "../features/prompts/prompt_service"
 import { runUiScrape, type UiEngine, type UiScrapeResult } from "../features/scraping/scraper_api_client"
+import { spendCredits } from "../features/credits/credits_service"
+import { CREDIT_COSTS } from "../features/subscription/plan_config"
 
 const engineMap: Record<Engine, UiEngine> = {
     CHATGPT: "chatgpt",
@@ -96,7 +98,7 @@ async function refreshRunStatus(run_id: string) {
 async function processScrapeJob(scrape_job_id: string) {
     const scrapeJob = await prisma.scrapeJob.findUniqueOrThrow({
         where: { id: scrape_job_id },
-        include: { prompt: true }
+        include: { prompt: true, project: { select: { user_id: true } } }
     })
 
     // Guard: if job was already completed by a previous BullMQ retry, skip it
@@ -171,6 +173,25 @@ async function processScrapeJob(scrape_job_id: string) {
     let chat_id: string | undefined
 
     if (status === ScrapeJobStatus.SUCCESS && result.answer_text) {
+        try {
+            await spendCredits({
+                userId: scrapeJob.project.user_id,
+                amount: CREDIT_COSTS.prompt_run,
+                action: "PROMPT_RUN",
+                description: `${scrapeJob.engine} visibility check`,
+                idempotencyKey: `prompt-run:${scrapeJob.id}`,
+                metadata: { run_id: scrapeJob.run_id, scrape_job_id: scrapeJob.id, engine: scrapeJob.engine },
+            })
+        } catch (error) {
+            const reason = error instanceof Error ? error.message : "Insufficient credits"
+            await prisma.scrapeJob.update({
+                where: { id: scrapeJob.id },
+                data: { status: ScrapeJobStatus.FAILED, error_reason: reason, completed_at: new Date() },
+            })
+            await refreshRunStatus(scrapeJob.run_id)
+            throw error
+        }
+
         const chat = await runPrompt({
             prompt_id: scrapeJob.prompt_id,
             run_id: scrapeJob.run_id,

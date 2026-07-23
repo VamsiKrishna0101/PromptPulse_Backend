@@ -101,3 +101,12 @@ export async function sendVerificationOtpEmail(email: string, otp: string) {
         `,
     })
 }
+
+export async function sendAgencyInvitationEmail(email: string, agencyEmail: string, inviteUrl: string) {
+    await sendEmail({
+        to: email,
+        subject: `${agencyEmail} invited you to PromptPulse`,
+        text: `${agencyEmail} invited you to collaborate in PromptPulse. Accept your invitation here: ${inviteUrl}`,
+        html: `<div style="font-family:Inter,Arial,sans-serif;background:#f8fafc;padding:28px;color:#0f172a"><div style="max-width:520px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:28px"><p style="margin:0 0 8px;font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#2563eb">PromptPulse</p><h1 style="margin:0 0 12px;font-size:24px">You have a new workspace invitation</h1><p style="color:#475569;line-height:1.6">${agencyEmail} invited you to collaborate with their agency in PromptPulse.</p><a href="${inviteUrl}" style="display:inline-block;background:#0f172a;color:#fff;padding:13px 18px;border-radius:10px;text-decoration:none;font-weight:700">Accept invitation</a><p style="font-size:13px;color:#64748b;line-height:1.6">This invitation expires in 7 days.</p></div></div>`,
+    })
+}

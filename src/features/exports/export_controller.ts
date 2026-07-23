@@ -27,11 +27,7 @@ export async function downloadCsvExportController(req: Request, res: Response): 
         const filters = parseFilters(req.query)
 
         await assertProjectAccess(project_id, userId)
-        const exportAccess = await canExport(userId)
-        if (!exportAccess.allowed) {
-            res.status(402).json({ error: exportAccess.reason ?? "Exports are not included in this plan" })
-            return
-        }
+        // PAYG: exports always allowed — credits deducted by credit service
 
         if (format === "pdf") {
             const result = await createPdfExport({ project_id, resource, filters })

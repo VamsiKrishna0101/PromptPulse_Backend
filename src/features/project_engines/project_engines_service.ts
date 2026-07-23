@@ -1,6 +1,6 @@
 import { Engine } from "@prisma/client"
 import prisma from "../../lib/prisma"
-import { getUserPlan } from "../subscription/subscription_service"
+import { getEffectivePlanAccess } from "../subscription/entitlements"
 import { assertProjectAccess } from "../projects/project_access"
 import {
     DEFAULT_PROJECT_ENGINES,
@@ -9,21 +9,22 @@ import {
     normalizeProjectEngines,
 } from "./project_engine_policy"
 
+// PAYG: all 5 engines available to every user \u2014 only validate non-empty
 export async function assertCanUseProjectEngines(userId: string, rawEngines: unknown) {
-    const plan = await getUserPlan(userId)
-    const limit = getEngineLimitForPlan(plan)
     const engines = normalizeProjectEngines(rawEngines)
 
     if (engines.length === 0) {
         throw new Error("Select at least one AI engine.")
     }
 
-    if (engines.length > limit) {
-        throw new Error(`Your ${plan.toLowerCase()} plan can track up to ${limit} AI engine${limit === 1 ? "" : "s"} per project.`)
+    const access = await getEffectivePlanAccess(userId)
+    if (access.trial.active && engines.length > 3) {
+        throw new Error("Your free trial includes 3 AI engines. Add a plan or credits to unlock all engines.")
     }
 
     return engines
 }
+
 
 export async function setProjectEngines(projectId: string, userId: string, rawEngines: unknown) {
     await assertProjectAccess(projectId, userId)

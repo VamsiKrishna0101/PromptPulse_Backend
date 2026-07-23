@@ -3,7 +3,7 @@ import prisma from "../../lib/prisma"
 import { PLAN_LIMITS } from "./plan_config"
 import type { PlanLimits } from "./subscription_types"
 
-export const FREE_TRIAL_DAYS = 14
+export const FREE_TRIAL_DAYS = 7
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 
 export type EffectivePlanAccess = {

@@ -3,9 +3,12 @@ import { Request, Response } from "express"
 import { enqueueProjectRun, getScrapeRun } from "./scrape_orchestration_service"
 import { assertProjectAccess } from "../projects/project_access"
 import type { AuthenticatedRequest } from "../../middleware/auth"
-import { canRunRefresh } from "../subscription/subscription_service"
 import { isActiveScrapeEngine } from "./scrape_engine_policy"
 import { assertCanUseProjectEngines } from "../project_engines/project_engines_service"
+import prisma from "../../lib/prisma"
+import { getCreditBalance } from "../payments/credits_service"
+import { CREDIT_COSTS } from "../subscription/plan_config"
+import { getProjectEngines } from "../project_engines/project_engines_service"
 
 export const enqueueProjectRunController = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -18,12 +21,6 @@ export const enqueueProjectRunController = async (req: Request, res: Response): 
 
         const userId = (req as AuthenticatedRequest).user.id
         await assertProjectAccess(project_id, userId)
-        const refreshCheck = await canRunRefresh(userId, project_id)
-        if (!refreshCheck.allowed) {
-            res.status(403).json({ error: refreshCheck.reason ?? "Your plan does not allow another refresh right now." })
-            return
-        }
-
         const parsedEngines = Array.isArray(engines)
             ? engines.map((engine: string) => engine.toUpperCase()).filter((engine: string) => engine in Engine) as Engine[]
             : undefined
@@ -40,6 +37,26 @@ export const enqueueProjectRunController = async (req: Request, res: Response): 
 
         if (parsedEngines?.length) {
             await assertCanUseProjectEngines(userId, parsedEngines)
+        }
+
+        const selectedPromptWhere = {
+            project_id,
+            is_active: true,
+            status: "ACTIVE" as const,
+            ...(Array.isArray(prompt_ids) && prompt_ids.length ? { id: { in: prompt_ids } } : {}),
+        }
+        const prompts = await prisma.prompt.findMany({
+            where: selectedPromptWhere,
+            select: { _count: { select: { geo_variants: { where: { is_active: true } } } } },
+        })
+        const selectedEngines = parsedEngines?.length ? parsedEngines : await getProjectEngines(project_id)
+        const engineCount = selectedEngines.length
+        const requestedJobs = prompts.reduce((total, prompt) => total + 1 + prompt._count.geo_variants, 0) * engineCount
+        const availableCredits = await getCreditBalance(userId)
+        const requiredCredits = requestedJobs * CREDIT_COSTS.prompt_run
+        if (requiredCredits > availableCredits) {
+            res.status(402).json({ error: `Not enough credits: this run needs ${requiredCredits}, but your wallet has ${availableCredits}.` })
+            return
         }
 
         const result = await enqueueProjectRun({

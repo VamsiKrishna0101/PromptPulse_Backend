@@ -6,6 +6,7 @@ export type AuthenticatedRequest = Request & {
     user: {
         id: string
         role?: "USER" | "ADMIN"
+        account_type?: "SINGLE" | "AGENCY"
     }
 }
 
@@ -32,7 +33,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
         const user = await prisma.user.findUnique({
             where: { id: payload.sub },
-            select: { id: true, role: true, is_verified: true },
+            select: { id: true, role: true, is_verified: true, account_type: true },
         })
 
         if (!user) {
@@ -45,7 +46,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
             return
         }
 
-        ;(req as AuthenticatedRequest).user = { id: user.id, role: user.role }
+        ;(req as AuthenticatedRequest).user = { id: user.id, role: user.role, account_type: user.account_type }
         next()
     } catch (error) {
         res.status(401).json({ error: "Invalid or expired authorization token" })

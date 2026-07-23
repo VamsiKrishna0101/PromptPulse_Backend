@@ -20,26 +20,9 @@ type SaraDebugTrace = {
     }
 }
 
-async function checkSaraDailyLimit(user_id: string) {
-    const { limits } = await getEffectivePlanAccess(user_id)
-    if (limits.sara_daily_limit === "unlimited") return
-
-    const startOfToday = new Date()
-    startOfToday.setHours(0, 0, 0, 0)
-
-    const count = await prisma.saraMessage.count({
-        where: {
-            role: "USER",
-            created_at: { gte: startOfToday },
-            conversation: {
-                user_id: user_id
-            }
-        }
-    })
-
-    if (count >= limits.sara_daily_limit) {
-        throw new Error("SARA_DAILY_LIMIT_REACHED")
-    }
+// PAYG: Sara has no daily message limit — all users have full access
+async function checkSaraDailyLimit(_user_id: string) {
+    // No limits in PAYG model
 }
 
 export async function reindexSaraProject(project_id: string, options?: {

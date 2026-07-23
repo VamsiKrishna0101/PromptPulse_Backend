@@ -14,6 +14,7 @@ export type RegisterResponse = {
         plan: string
         effective_plan?: string
         is_verified: boolean
+        credits_balance?: number
     }
     accessToken?: string
     refreshToken?: string
@@ -36,8 +37,19 @@ export type LoginResponse = {
         plan: string,
         effective_plan?: string,
         is_verified: boolean
+        credits_balance?: number
 
     },
     access_token: string,
     refresh_token: string
+}
+
+export type ForgotPasswordOtpInput = {
+    email: string
+}
+
+export type ResetPasswordInput = {
+    email: string
+    otp: string
+    password: string
 }

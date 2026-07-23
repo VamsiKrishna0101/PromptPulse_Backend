@@ -4,8 +4,8 @@ export type PaidPlan = Exclude<Plan, "FREE">
 export type BillingInterval = "monthly" | "annual"
 
 export type PlanLimits = {
-    projects: number
-    prompts: number
+    projects: number | "unlimited"
+    prompts: number | "unlimited"
     competitors: number | "unlimited"
     refreshes_per_week: number | "daily"
     sara: "none" | "basic" | "full" | "advanced"
@@ -90,8 +90,8 @@ export type PlanQuotaResponse = {
         competitor_count: number
     }
     remaining: {
-        projects: number
-        prompts: number
+        projects: number | "unlimited"
+        prompts: number | "unlimited"
         competitors: number | "unlimited"
     }
 }

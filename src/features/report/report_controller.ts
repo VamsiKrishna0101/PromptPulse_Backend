@@ -5,6 +5,7 @@ import prisma from "../../lib/prisma"
 import { spendCredits, refundCredits } from "../credits/credits_service"
 import { assertProjectAccess } from "../projects/project_access"
 import { CREDIT_COSTS } from "../subscription/plan_config"
+import { getEffectivePlanAccess } from "../subscription/entitlements"
 
 const REPORTS_API_BASE_URL = (
     process.env.AI_REPORTS_API_BASE_URL ??
@@ -78,6 +79,15 @@ export async function generateReportController(req: Request, res: Response) {
         }
 
         await assertProjectAccess(projectId, userId)
+
+        const access = await getEffectivePlanAccess(userId)
+        if (access.trial.active) {
+            const trialReports = await prisma.aIReport.count({ where: { user_id: userId, created_at: { gte: access.trial.starts_at ?? new Date(0) } } })
+            if (trialReports >= 2) {
+                res.status(402).json({ error: "Your free trial includes 2 AI reports. Add credits to generate more." })
+                return
+            }
+        }
 
         idempotencyKey = readIdempotencyKey(req)
             ?? `ai-report:${userId}:${projectId}:${periodType}:${Date.now()}`

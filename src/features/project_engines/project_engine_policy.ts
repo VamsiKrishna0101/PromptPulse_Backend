@@ -21,9 +21,9 @@ export function isSelectableProjectEngine(engine: Engine) {
     return selectableSet.has(engine)
 }
 
-export function getEngineLimitForPlan(plan: Plan) {
-    const limit = PLAN_LIMITS[plan]?.engine_limit ?? 3
-    return limit === "all" ? SELECTABLE_PROJECT_ENGINES.length : limit
+// PAYG: all engines are available to every user
+export function getEngineLimitForPlan(_plan: Plan) {
+    return SELECTABLE_PROJECT_ENGINES.length
 }
 
 export function normalizeProjectEngines(input: unknown): Engine[] {

@@ -1,4 +1,5 @@
 import type { Plan, SubscriptionStatus } from "@prisma/client"
+import type { PlanLimits } from "../subscription/subscription_types"
 
 export type SupportAgentMessage = {
     role: "user" | "assistant"
@@ -63,15 +64,7 @@ export type SupportAgentContext = {
         trial_days_left: number
         cancel_at_period_end: boolean
     }
-    limits: {
-        projects: number
-        prompts: number
-        competitors: number | "unlimited"
-        refreshes_per_week: number | "daily"
-        sara: string
-        exports: string
-        credits: number
-    }
+    limits: PlanLimits
     available_plans: {
         id: Plan
         name: string

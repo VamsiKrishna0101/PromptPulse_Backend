@@ -15,37 +15,39 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     },
     STARTER: {
         projects: 1,
-        prompts: 20,
-        competitors: 5,
-        refreshes_per_week: 2,
-        sara: "basic",
-        sara_daily_limit: 20,
-        exports: "none",
-        credits: 30,
-        engine_limit: 3,
+        prompts: 15,
+        competitors: 3,
+        refreshes_per_week: "daily",
+        sara: "full",
+        sara_daily_limit: "unlimited",
+        exports: "full",
+        credits: 2250,
+        engine_limit: "all",
     },
     GROWTH: {
         projects: 2,
-        prompts: 50,
-        competitors: 12,
+        prompts: 30,
+        competitors: 6,
         refreshes_per_week: "daily",
         sara: "full",
-        sara_daily_limit: 50,
-        exports: "basic",
-        credits: 100,
-        engine_limit: 3,
+        sara_daily_limit: "unlimited",
+        exports: "full",
+        credits: 5000,
+        engine_limit: "all",
     },
     PRO: {
         projects: 5,
-        prompts: 125,
-        competitors: "unlimited",
+        prompts: 75,
+        competitors: 15,
         refreshes_per_week: "daily",
         sara: "advanced",
         sara_daily_limit: "unlimited",
         exports: "full",
-        credits: 275,
+        credits: 13000,
         engine_limit: "all",
     },
+    // Agency is a dedicated Pay-As-You-Go plan.
+    // No base credits — agencies buy credits as they consume them across client projects.
 }
 
 export const PLAN_PRICING: Record<Plan, { name: string; monthly_price_usd: number | "custom"; trial_days: number | null; summary: string }> = {
@@ -76,16 +78,17 @@ export const PLAN_PRICING: Record<Plan, { name: string; monthly_price_usd: numbe
 }
 
 export const CREDIT_COSTS = {
+    prompt_run: 1,
     dashboard_export_xlsx: 1,
-    dashboard_export_pdf: 2,
-    geo_article_pdf: 2,
-    ai_visibility_report: 5,
-    ai_report_ppt: 2,
-    content_brief: 3,
-    full_article: 5,
-    weekly_email_report: 5,
-    reddit_intelligence_standard: 1,
-    reddit_intelligence_deep: 3,
+    dashboard_export_pdf: 0,
+    geo_article_pdf: 0,
+    ai_visibility_report: 25,
+    ai_report_ppt: 0,
+    content_brief: 15,
+    full_article: 30,
+    weekly_email_report: 25,
+    reddit_intelligence_standard: 25,
+    reddit_intelligence_deep: 50,
 } as const
 
 export function getPromptLimitForPlan(plan: Plan) {

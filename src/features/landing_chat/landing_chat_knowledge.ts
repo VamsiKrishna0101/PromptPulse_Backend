@@ -4,22 +4,24 @@ PromptPulse is an AI visibility and GEO platform for teams that want to understa
 Core capabilities:
 - Tracks brand mentions, ranking position, sentiment, competitors, sources, and citations across AI search engines.
 - Supported AI engines: ChatGPT, Gemini, Perplexity, Google AI Mode, and Copilot.
-- Starter and Growth projects choose any 3 engines. Pro projects can track all available engines.
+- Paid projects can track all five available engines. The free trial starts with three engines.
 - Includes dashboards, competitor tracking, source intelligence, reports, exports, weekly email reports, AI Workspace, action queue, Reddit Intelligence, and Sara for GEO strategy after login.
 - Setup flow: create account, add brand, choose primary market/country, review or upload prompts, choose AI engines, add competitors, then launch visibility runs.
 
 Trial and plans:
-- Free trial lasts 14 days and does not require a credit card.
-- Trial gives Growth-style capabilities with a smaller prompt cap so users can test value before paying.
-- Starter: $29/mo, 1 project, 20 prompts, choose 3 AI engines, 5 competitors, twice-weekly refresh.
-- Growth: $59/mo, 2 projects, 50 shared prompts, choose 3 AI engines, 12 competitors, daily refresh, Sara, reports, action queue, source enrichment, secure MCP connector for 1 external assistant, and credits.
-- Pro: $129/mo, 5 projects, 125 shared prompts, all 5 AI engines, unlimited competitors, daily refresh, weekly email reports, full exports, advanced MCP connector limits, advanced workflows, and more credits.
-- Enterprise is custom for larger prompt/project volume, priority runs, onboarding, and custom needs.
+- Free trial lasts 7 days and does not require a credit card.
+- Trial gives 105 credits, up to 5 prompts across 3 engines, 2 AI reports, and limited Sara access so users can test value before paying.
+- Every paid plan includes the complete PromptPulse feature set: dashboards, sources, competitors, web analytics, Sara, AI Workspace, opportunity engine, action queue, GEO briefs, Reddit Intelligence, reports, exports, agency tools, and internal MCP context/tools.
+- Plans differ by capacity only: included credits, tracked prompts, and workspace allowance.
+- Starter: ₹2,499/mo, 2,250 included monthly credits, 15 tracked prompts, all 5 AI engines, daily tracking, core insights, Sara, reports, evidence, competitor analysis, and exports.
+- Growth: ₹4,999/mo, 4,500 included monthly credits + 500 bonus credits, 30 tracked prompts, all 5 AI engines, daily tracking, and best-value capacity.
+- Pro: ₹9,999/mo, 11,250 included monthly credits + 1,750 bonus credits, 75 tracked prompts, all 5 AI engines, daily tracking, and higher-capacity team support.
+- Agencies can add custom PAYG credits from 1,000 upward and share the wallet across client workspaces.
 
 Credits:
-- Credits are used for heavier generated outputs and premium intelligence workflows such as reports, content briefs, Reddit scans, and strategy actions.
-- CSV/PDF exports are plan features and do not consume credits.
-- Core scheduled visibility tracking is governed by plan limits.
+- One credit equals one successful prompt on one AI engine.
+- AI visibility reports use 25 credits, content briefs use 15, and Reddit intelligence starts at 25 credits.
+- Failed provider requests and retries are not charged. CSV/PDF exports are free.
 
 Contact and support:
 - Visitors can leave a message from the landing chat with their email and the team will follow up.
@@ -33,7 +35,7 @@ Important behavior:
 `.trim()
 
 export const LANDING_CHAT_DEFAULT_SUGGESTIONS = [
-    "How does the 14-day trial work?",
+    "How does the 7-day trial work?",
     "Which AI engines do you track?",
     "What plan should I choose?",
     "How can I contact the team?",

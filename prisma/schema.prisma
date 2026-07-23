@@ -16,6 +16,34 @@ enum UserRole {
   ADMIN
 }
 
+enum AgencyMembershipRole {
+  OWNER
+  ADMIN
+  MANAGER
+  ANALYST
+  CLIENT_ADMIN
+  CLIENT_VIEWER
+}
+
+enum AgencyMembershipStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+  REMOVED
+}
+
+enum AgencyInvitationType {
+  TEAM_MEMBER
+  CLIENT_USER
+}
+
+enum AgencyInvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
 enum Plan {
   FREE
   STARTER
@@ -146,6 +174,7 @@ model User {
   account_type   AccountType
   role           UserRole    @default(USER)
   plan           Plan        @default(FREE)
+  credits_balance Int        @default(0)
   product_tour_completed Boolean @default(false)
   product_tour_completed_at DateTime?
   created_at     DateTime    @default(now())
@@ -165,6 +194,68 @@ model User {
   reddit_posts RedditPost[]
   brand_preferences BrandPreference[]
   billing_invoices BillingInvoice[]
+  credit_transactions CreditTransaction[]
+  razorpay_orders RazorpayOrder[]
+  credit_buckets CreditBucket[]
+  owned_agency_memberships AgencyMembership[] @relation("AgencyOwnerMemberships")
+  agency_memberships AgencyMembership[] @relation("AgencyMemberMemberships")
+  sent_agency_invitations AgencyInvitation[] @relation("AgencyInvitationOwner")
+  received_agency_invitations AgencyInvitation[] @relation("AgencyInvitationInvitee")
+  agency_client_links AgencyClientLink[] @relation("AgencyClientOwner")
+  client_agency_links AgencyClientLink[] @relation("AgencyClientUser")
+}
+
+model AgencyMembership {
+  id              String                 @id @default(uuid())
+  agency_user_id  String
+  member_user_id  String
+  role            AgencyMembershipRole   @default(ANALYST)
+  status          AgencyMembershipStatus @default(ACTIVE)
+  created_at      DateTime               @default(now())
+  updated_at      DateTime               @updatedAt
+
+  agency          User                   @relation("AgencyOwnerMemberships", fields: [agency_user_id], references: [id], onDelete: Cascade)
+  member          User                   @relation("AgencyMemberMemberships", fields: [member_user_id], references: [id], onDelete: Cascade)
+
+  @@unique([agency_user_id, member_user_id])
+  @@index([member_user_id, status])
+  @@index([agency_user_id, status])
+}
+
+model AgencyInvitation {
+  id              String                  @id @default(uuid())
+  agency_user_id  String
+  invitee_user_id String?
+  email           String
+  type            AgencyInvitationType    @default(TEAM_MEMBER)
+  role            AgencyMembershipRole    @default(ANALYST)
+  token           String                  @unique
+  status          AgencyInvitationStatus  @default(PENDING)
+  expires_at      DateTime
+  created_at      DateTime                @default(now())
+  updated_at      DateTime                @updatedAt
+
+  agency          User                    @relation("AgencyInvitationOwner", fields: [agency_user_id], references: [id], onDelete: Cascade)
+  invitee         User?                   @relation("AgencyInvitationInvitee", fields: [invitee_user_id], references: [id], onDelete: SetNull)
+
+  @@index([email, status])
+  @@index([agency_user_id, status])
+}
+
+model AgencyClientLink {
+  id              String   @id @default(uuid())
+  agency_user_id  String
+  client_user_id  String
+  role            String   @default("CLIENT_ADMIN")
+  status          String   @default("ACTIVE")
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  agency          User     @relation("AgencyClientOwner", fields: [agency_user_id], references: [id], onDelete: Cascade)
+  client          User     @relation("AgencyClientUser", fields: [client_user_id], references: [id], onDelete: Cascade)
+
+  @@unique([agency_user_id, client_user_id])
+  @@index([client_user_id, status])
 }
 
   model Project {
@@ -950,4 +1041,49 @@ model PublicChatLead {
   @@index([email, created_at])
   @@index([topic, created_at])
   @@index([created_at])
+}
+
+model CreditTransaction {
+  id          String   @id @default(uuid())
+  user_id     String
+  user        User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  amount      Int
+  action      String
+  description String?
+  metadata    Json?
+  created_at  DateTime @default(now())
+
+  @@index([user_id, created_at])
+  @@index([user_id, action])
+}
+
+model CreditBucket {
+  id               String   @id @default(uuid())
+  user_id          String
+  user             User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  source           String
+  amount_remaining Int
+  expires_at       DateTime?
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  @@index([user_id, expires_at])
+  @@index([user_id, created_at])
+}
+
+model RazorpayOrder {
+  id                  String   @id @default(uuid())
+  user_id             String
+  user                User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  razorpay_order_id   String   @unique
+  razorpay_payment_id String?  @unique
+  amount_inr_paise    Int
+  credits_to_award   Int
+  status              String   @default("PENDING")
+  idempotency_key     String?  @unique
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  @@index([user_id, created_at])
+  @@index([status, created_at])
 }

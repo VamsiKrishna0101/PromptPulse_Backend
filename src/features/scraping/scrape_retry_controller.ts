@@ -25,11 +25,7 @@ export async function retryFailedJobsController(req: Request, res: Response): Pr
 
         const userId = (req as AuthenticatedRequest).user.id
         await assertProjectAccess(run.project_id, userId)
-        const access = await getEffectivePlanAccess(userId)
-        if (access.effective_plan === Plan.FREE) {
-            res.status(403).json({ error: "Your trial has ended. Upgrade to retry failed scraping jobs." })
-            return
-        }
+        // PAYG: no plan gate — all users can retry failed jobs
         const result = await retryFailedJobsForRun(runId)
 
         if (result.queued === 0) {

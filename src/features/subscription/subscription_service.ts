@@ -319,35 +319,31 @@ export async function getPlanQuota(userId: string): Promise<PlanQuotaResponse> {
         limits,
         usage,
         remaining: {
-            projects: remainingNumber(limits.projects, usage.project_count),
-            prompts: remainingNumber(limits.prompts, usage.prompt_count),
+            projects: remaining(limits.projects, usage.project_count),
+            prompts: remaining(limits.prompts, usage.prompt_count),
             competitors: remaining(limits.competitors, usage.competitor_count),
         },
     }
 }
 
+// PAYG: no project or prompt limits — always allow
 export async function assertCanCreateProjectWithPrompts(userId: string, promptCount: number) {
-    const quota = await getPlanQuota(userId)
-
-    if (quota.remaining.projects < 1) {
-        throw new Error(`Your ${quota.plan.toLowerCase()} plan can include up to ${quota.limits.projects} project${quota.limits.projects === 1 ? "" : "s"}.`)
+    const access = await getEffectivePlanAccess(userId)
+    if (access.trial.active) {
+        const used = await prisma.prompt.count({ where: { project: { user_id: userId }, is_active: true, status: "ACTIVE" } })
+        if (used + promptCount > 5) throw new Error("Your free trial includes up to 5 prompts. Add a plan or credits to continue.")
     }
-
-    if (promptCount > quota.remaining.prompts) {
-        throw new Error(`Your ${quota.plan.toLowerCase()} plan has ${quota.remaining.prompts} prompt${quota.remaining.prompts === 1 ? "" : "s"} remaining across all projects.`)
-    }
-
-    return quota
+    return { allowed: true }
 }
 
+// PAYG: no prompt limits — always allow
 export async function assertCanCreatePrompts(userId: string, promptCount = 1) {
-    const quota = await getPlanQuota(userId)
-
-    if (promptCount > quota.remaining.prompts) {
-        throw new Error(`Your ${quota.plan.toLowerCase()} plan has ${quota.remaining.prompts} prompt${quota.remaining.prompts === 1 ? "" : "s"} remaining across all projects.`)
+    const access = await getEffectivePlanAccess(userId)
+    if (access.trial.active) {
+        const used = await prisma.prompt.count({ where: { project: { user_id: userId }, is_active: true, status: "ACTIVE" } })
+        if (used + promptCount > 5) throw new Error("Your free trial includes up to 5 prompts. Add a plan or credits to continue.")
     }
-
-    return quota
+    return { allowed: true }
 }
 
 export async function getMyPlan(userId: string): Promise<MyPlanResponse> {
@@ -384,69 +380,36 @@ export async function getMyPlan(userId: string): Promise<MyPlanResponse> {
     }
 }
 
-export async function canCreateProject(userId: string): Promise<LimitCheckResponse> {
-    const quota = await getPlanQuota(userId)
-    const plan = quota.plan
-    const limit = quota.limits.projects
-    const used = quota.usage.project_count
-    const allowed = used < limit
+// ── PAYG: all limit checks always return allowed ─────────────────────────────
+// Users are gated by credit balance only, never by plan-based limits.
 
-    return buildCheck("project", plan, limit, used, allowed, allowed ? undefined : "Project limit reached")
+export async function canCreateProject(userId: string): Promise<LimitCheckResponse> {
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { plan: true } })
+    return buildCheck("project", (user?.plan ?? "FREE") as Plan, "unlimited", 0, true)
 }
 
 export async function canCreatePrompt(userId: string): Promise<LimitCheckResponse> {
-    const quota = await getPlanQuota(userId)
-    const plan = quota.plan
-    const limit = quota.limits.prompts
-    const used = quota.usage.prompt_count
-    const allowed = used < limit
-
-    return buildCheck("prompt", plan, limit, used, allowed, allowed ? undefined : "Prompt limit reached")
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { plan: true } })
+    return buildCheck("prompt", (user?.plan ?? "FREE") as Plan, "unlimited", 0, true)
 }
 
 export async function canAddCompetitor(userId: string): Promise<LimitCheckResponse> {
-    const quota = await getPlanQuota(userId)
-    const plan = quota.plan
-    const limit = quota.limits.competitors
-    const used = quota.usage.competitor_count
-    const allowed = isWithinLimit(limit, used)
-
-    return buildCheck("competitor", plan, limit, used, allowed, allowed ? undefined : "Competitor limit reached")
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { plan: true } })
+    return buildCheck("competitor", (user?.plan ?? "FREE") as Plan, "unlimited", 0, true)
 }
 
-export async function assertCanAddCompetitor(userId: string) {
-    const check = await canAddCompetitor(userId)
-    if (!check.allowed) {
-        throw new Error(`Your ${check.plan.toLowerCase()} plan can track up to ${formatLimit(check.limit as number | "unlimited")} competitor${check.limit === 1 ? "" : "s"}.`)
-    }
-    return check
+export async function assertCanAddCompetitor(_userId: string) {
+    return { allowed: true, feature: "competitor" as const, plan: "FREE" as Plan, limit: "unlimited", used: 0 }
 }
 
-export async function assertCanAddCompetitors(userId: string, count: number) {
-    if (count <= 0) return getPlanQuota(userId)
-    const quota = await getPlanQuota(userId)
-    const limit = quota.limits.competitors
-    if (limit !== "unlimited" && quota.usage.competitor_count + count > limit) {
-        const remainingCount = remaining(limit, quota.usage.competitor_count)
-        throw new Error(`Your ${quota.plan.toLowerCase()} plan has ${remainingCount} competitor${remainingCount === 1 ? "" : "s"} remaining.`)
-    }
-    return quota
+export async function assertCanAddCompetitors(_userId: string, _count: number) {
+    return { allowed: true }
 }
 
 export async function canRunRefresh(userId: string, projectId?: string): Promise<LimitCheckResponse> {
-    const access = await getEffectivePlanAccess(userId)
-    const plan = access.plan
-    const limit = access.limits.refreshes_per_week
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { plan: true } })
 
-    if (access.trial.expired) {
-        return buildCheck("refresh", plan, 0, 0, false, "Your 14-day free trial has ended. Upgrade to resume scraping.")
-    }
-
-    if (limit === "daily") {
-        if (!projectId) {
-            return buildCheck("refresh", plan, "daily", 0, true)
-        }
-
+    if (projectId) {
         const used = await prisma.run.count({
             where: {
                 project_id: projectId,
@@ -455,45 +418,22 @@ export async function canRunRefresh(userId: string, projectId?: string): Promise
             },
         })
         const allowed = used < 1
-        return buildCheck("refresh", plan, "daily", used, allowed, allowed ? undefined : "This project already refreshed today.")
+        return buildCheck("refresh", (user?.plan ?? "FREE") as Plan, "daily", used, allowed, allowed ? undefined : "This project already refreshed today.")
     }
 
-    const since = new Date()
-    since.setDate(since.getDate() - 7)
-
-    const used = await prisma.run.count({
-        where: {
-            project: {
-                user_id: userId,
-            },
-            ...(projectId ? { project_id: projectId } : {}),
-            ran_at: {
-                gte: since,
-            },
-        },
-    })
-    const allowed = used < limit
-
-    return buildCheck("refresh", plan, limit, used, allowed, allowed ? undefined : "Weekly refresh limit reached")
+    return buildCheck("refresh", (user?.plan ?? "FREE") as Plan, "daily", 0, true)
 }
 
 export async function canUseSara(userId: string): Promise<LimitCheckResponse> {
-    const access = await getEffectivePlanAccess(userId)
-    const plan = access.plan
-    const saraAccess = access.limits.sara
-    const allowed = saraAccess !== "none"
-
-    return buildCheck("sara", plan, saraAccess, 0, allowed, allowed ? undefined : "Sara is not included in this plan")
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { plan: true } })
+    return buildCheck("sara", (user?.plan ?? "FREE") as Plan, "full", 0, true)
 }
 
 export async function canExport(userId: string): Promise<LimitCheckResponse> {
-    const access = await getEffectivePlanAccess(userId)
-    const plan = access.plan
-    const exportAccess = access.limits.exports
-    const allowed = exportAccess !== "none"
-
-    return buildCheck("export", plan, exportAccess, 0, allowed, allowed ? undefined : "Exports are not included in this plan")
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { plan: true } })
+    return buildCheck("export", (user?.plan ?? "FREE") as Plan, "full", 0, true)
 }
+
 
 export async function refreshPlanUsage(userId: string) {
     const { start, end } = await getCurrentPeriod(userId)

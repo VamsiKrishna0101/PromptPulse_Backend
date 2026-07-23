@@ -5,11 +5,13 @@ import { generateAccessToken, generateRefreshToken } from '../../utils/jwt'
 import type { RegisterInput, RegisterResponse, LoginInput, LoginResponse } from './auth_types'
 import { sendVerificationOtpEmail } from '../email/email_service'
 import { ensureFreeTrialSubscription, getEffectivePlanAccess } from '../subscription/entitlements'
+import { awardCredits } from '../payments/credits_service'
 import jwt from 'jsonwebtoken'
 
 
 export async function verifyUserOtp(email: string, otp: string) {
-    const user = await prisma.user.findUnique({ where: { email } })
+    const normalizedEmail = email.trim().toLowerCase()
+    const user = await prisma.user.findUnique({ where: { email: normalizedEmail } })
 
     if (!user) {
         throw new Error('User not found')
@@ -45,14 +47,22 @@ export async function verifyUserOtp(email: string, otp: string) {
     })
 
     await ensureFreeTrialSubscription(updatedUser.id)
+
+    // Award signup bonus credits — only if this is a fresh verification (balance is 0)
+    const currentUser = await prisma.user.findUnique({ where: { id: updatedUser.id }, select: { credits_balance: true } })
+    if ((currentUser?.credits_balance ?? 0) === 0) {
+        await awardCredits(updatedUser.id, 105, 'SIGNUP_BONUS', '105 free trial credits on account verification')
+    }
+
     const access = await getEffectivePlanAccess(updatedUser.id)
+    const finalUser = await prisma.user.findUnique({ where: { id: updatedUser.id }, select: { credits_balance: true } })
 
     const accessToken = generateAccessToken(updatedUser.id)
     const refreshToken = generateRefreshToken(updatedUser.id)
 
     return {
         message: 'Email verified successfully',
-        user: { ...updatedUser, effective_plan: access.effective_plan },
+        user: { ...updatedUser, effective_plan: access.effective_plan, credits_balance: finalUser?.credits_balance ?? 105 },
         access_token: accessToken,
         refresh_token: refreshToken,
         accessToken,
@@ -62,7 +72,8 @@ export async function verifyUserOtp(email: string, otp: string) {
 
 
 export async function registerUser(input: RegisterInput): Promise<RegisterResponse> {
-    const { email, password, account_type } = input
+    const email = input.email.trim().toLowerCase()
+    const { password, account_type } = input
 
     // 1. Work email check
     if (!isWorkEmail(email)) {
@@ -137,7 +148,8 @@ export async function registerUser(input: RegisterInput): Promise<RegisterRespon
 }
 
 export async function login(input: LoginInput): Promise<LoginResponse> {
-    const { email, password } = input
+    const email = input.email.trim().toLowerCase()
+    const { password } = input
 
     const user = await prisma.user.findUnique({
         where: { email },
@@ -148,6 +160,7 @@ export async function login(input: LoginInput): Promise<LoginResponse> {
             account_type: true,
             role: true,
             plan: true,
+            credits_balance: true,
             is_verified: true,
         }
     })
@@ -174,11 +187,77 @@ export async function login(input: LoginInput): Promise<LoginResponse> {
             role: user.role,
             plan: user.plan,
             effective_plan: access.effective_plan,
-            is_verified: user.is_verified
+            is_verified: user.is_verified,
+            credits_balance: user.credits_balance,
         },
         access_token: accessToken,
         refresh_token: refreshToken
     }
+}
+
+export async function sendForgotPasswordOtp(email: string) {
+    const normalizedEmail = email.trim().toLowerCase()
+    const user = await prisma.user.findUnique({
+        where: { email: normalizedEmail },
+        select: { id: true, is_verified: true },
+    })
+
+    if (!user?.is_verified) {
+        return { message: "If this account exists, an OTP has been sent." }
+    }
+
+    const otp = generateOtp()
+    const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000)
+
+    await prisma.user.update({
+        where: { id: user.id },
+        data: {
+            otp,
+            otp_expires_at: otpExpiresAt,
+        },
+    })
+
+    try {
+        await sendVerificationOtpEmail(normalizedEmail, otp)
+    } catch (error) {
+        const allowDevOtpFallback = process.env.NODE_ENV !== "production" && process.env.EMAIL_DEV_OTP_FALLBACK !== "false"
+        if (!allowDevOtpFallback) throw error
+
+        console.warn(`[DEV OTP FALLBACK] Could not send password reset OTP to ${normalizedEmail}. Use OTP: ${otp}`)
+    }
+
+    return { message: "If this account exists, an OTP has been sent." }
+}
+
+export async function resetPasswordWithOtp(email: string, otp: string, password: string) {
+    const normalizedEmail = email.trim().toLowerCase()
+    const user = await prisma.user.findUnique({ where: { email: normalizedEmail } })
+
+    if (!user || !user.is_verified) {
+        throw new Error("Invalid or expired OTP")
+    }
+
+    if (user.otp !== otp) {
+        throw new Error("Invalid or expired OTP")
+    }
+
+    if (!user.otp_expires_at || user.otp_expires_at < new Date()) {
+        throw new Error("Invalid or expired OTP")
+    }
+
+    const salt = await bcrypt.genSalt(10)
+    const hashedPassword = await bcrypt.hash(password, salt)
+
+    await prisma.user.update({
+        where: { id: user.id },
+        data: {
+            password: hashedPassword,
+            otp: null,
+            otp_expires_at: null,
+        },
+    })
+
+    return { message: "Password updated successfully" }
 }
 
 export async function refreshAccessToken(refreshToken: string) {

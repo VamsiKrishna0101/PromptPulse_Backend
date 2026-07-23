@@ -4,7 +4,7 @@ import {
     getPromptsWithStats, activatePrompt, deactivatePrompt, getPromptStats,
     getPromptTopics, createTopic, createPrompt,
     GEO_COUNTRIES, getGeoVariantsForPrompt, addGeoVariant, removeGeoVariant,
-    toggleGeoVariant, getGeoVisibilityStats,
+    toggleGeoVariant, getGeoVisibilityStats, getGeoCountryByName,
 } from './prompt_service'
 import { discoverPromptCandidates } from './prompt_discovery_service'
 import { assertProjectAccess, assertPromptAccess } from '../projects/project_access'
@@ -19,6 +19,8 @@ const createTopicSchema = z.object({
 const createPromptSchema = z.object({
     text: z.string().trim().min(8, 'Prompt must be at least 8 characters').max(500, 'Prompt is too long'),
     topic: z.string().trim().min(2, 'Topic is required').max(80, 'Topic is too long'),
+    country_code: z.string().trim().optional(),
+    country_name: z.string().trim().optional(),
 })
 
 function readRouteParam(value: string | string[] | undefined): string | null {
@@ -136,8 +138,8 @@ export const createPromptController = async (req: Request, res: Response): Promi
             return
         }
 
-        const user_id = (req as AuthenticatedRequest).user.id
-        await assertProjectAccess(project_id, user_id)
+        const user = (req as AuthenticatedRequest).user
+        const project = await assertProjectAccess(project_id, user.id)
 
         const topics = await getPromptTopics(project_id)
         const topicExists = topics.some(topic => topic.name.toLowerCase() === parsed.data.topic.trim().toLowerCase())
@@ -146,12 +148,28 @@ export const createPromptController = async (req: Request, res: Response): Promi
             return
         }
 
-        await assertCanCreatePrompts(user_id, 1)
+        await assertCanCreatePrompts(user.id, 1)
+
+        // For agencies, if no country is specified, default to the client's project brand_location
+        let country_code = parsed.data.country_code
+        let country_name = parsed.data.country_name
+        if (!country_code && user.account_type === "AGENCY") {
+            const matchedCountry = getGeoCountryByName(project.brand_location)
+            if (matchedCountry) {
+                country_code = matchedCountry.code
+                country_name = matchedCountry.name
+            } else {
+                country_code = "US" // ultimate fallback
+                country_name = "United States"
+            }
+        }
 
         const prompt = await createPrompt({
             project_id,
             text: parsed.data.text,
             topic: parsed.data.topic,
+            country_code,
+            country_name,
         })
 
         res.status(201).json({ success: true, prompt })

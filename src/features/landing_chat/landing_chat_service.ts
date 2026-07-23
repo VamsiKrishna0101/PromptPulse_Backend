@@ -27,8 +27,8 @@ function answerForIntent(intent: LandingChatIntent): LandingChatResponse {
     if (intent === "pricing") {
         return {
             intent,
-            answer: "PromptPulse has Starter at $29/mo, Growth at $59/mo, and Pro at $129/mo. Growth is the best fit for most SaaS teams because it includes daily refreshes, Sara, reports, action queue, source enrichment, and 50 shared prompts.",
-            suggestions: ["What is included in Growth?", "Do you offer annual pricing?", "Can agencies use Pro?"],
+            answer: "PromptPulse has Starter at ₹2,499/mo with 2,250 credits, Growth at ₹4,999/mo with 4,500 included + 500 bonus credits, and Pro at ₹9,999/mo with 11,250 included + 1,750 bonus credits. Every paid plan includes the complete PromptPulse feature set; plans differ only by capacity.",
+            suggestions: ["What is included in Growth?", "How do credits work?", "Can agencies use a shared wallet?"],
             cta: { label: "See pricing", href: "/pricing" },
         }
     }
@@ -36,7 +36,7 @@ function answerForIntent(intent: LandingChatIntent): LandingChatResponse {
     if (intent === "trial") {
         return {
             intent,
-            answer: "The trial is 14 days and does not require a credit card. Trial users can experience Growth-style features with a smaller prompt cap, so you can see the product value before paying.",
+            answer: "The trial is 7 days and does not require a credit card. It includes 105 credits, up to 5 prompts across 3 engines, 2 AI reports, and limited Sara access so you can see the product value before paying.",
             suggestions: ["What happens after trial?", "Can I book a demo?", "Which plan fits my team?"],
             cta: { label: "Start trial", href: "/signup" },
         }
@@ -45,7 +45,7 @@ function answerForIntent(intent: LandingChatIntent): LandingChatResponse {
     if (intent === "engines") {
         return {
             intent,
-            answer: "PromptPulse tracks AI visibility across ChatGPT, Gemini, Perplexity, Google AI Mode, and Copilot. Starter and Growth teams choose the 3 engines that matter most. Pro can track all available engines.",
+            answer: "PromptPulse tracks AI visibility across ChatGPT, Gemini, Perplexity, Google AI Mode, and Copilot. Every paid plan can use all five engines; the free trial starts with three engines so you can evaluate the workflow before paying.",
             suggestions: ["How often do runs refresh?", "Do you track sources?", "Can I choose country targeting?"],
             cta: { label: "Start tracking", href: "/signup" },
         }
@@ -63,8 +63,8 @@ function answerForIntent(intent: LandingChatIntent): LandingChatResponse {
     if (intent === "credits") {
         return {
             intent,
-            answer: "Credits are used for premium generated outputs like reports, content briefs, Reddit scans, and intelligence workflows. CSV/PDF exports are plan features and do not consume credits.",
-            suggestions: ["Do exports use credits?", "What reports are included?", "Which plan has more credits?"],
+            answer: "One credit covers one successful prompt on one AI engine. AI visibility reports use 25 credits, content briefs use 15, and Reddit intelligence starts at 25. Failed provider requests and retries are not charged; agencies can top up a shared wallet from 1,000 credits.",
+            suggestions: ["Do exports use credits?", "Which plan has more credits?", "Can agencies share credits?"],
             cta: { label: "View plans", href: "/pricing" },
         }
     }
@@ -72,8 +72,8 @@ function answerForIntent(intent: LandingChatIntent): LandingChatResponse {
     if (intent === "agencies") {
         return {
             intent,
-            answer: "Yes. Agencies can manage multiple projects, track client competitors, export reports, and use AI Workspace for action plans. Pro is usually the better fit if you manage several brands or markets.",
-            suggestions: ["How many projects are in Pro?", "Can clients receive reports?", "Can I book an agency demo?"],
+            answer: "Yes. Agencies can use one shared PAYG wallet across client workspaces, top up from 1,000 credits, track competitors, export reports, and use AI Workspace for action plans. Pro includes 13,000 monthly credits with +1,750 bonus credits; larger teams can add PAYG capacity.",
+            suggestions: ["How do agency credits work?", "Which engines are in Pro?", "Can I book an agency demo?"],
             cta: { label: "Book a demo", href: "/book-demo" },
         }
     }

@@ -1,5 +1,5 @@
 import prisma from '../../lib/prisma'
-export { GEO_COUNTRIES } from '../geo/countries'
+export { GEO_COUNTRIES, getGeoCountryByName } from '../geo/countries'
 
 // ─── Geo: supported countries (top GEO markets) ───────────────────────────────
 
@@ -28,6 +28,8 @@ export type CreatePromptInput = {
     text: string
     topic: string
     project_id: string
+    country_code?: string
+    country_name?: string
 }
 
 export type PromptTopic = {
@@ -218,8 +220,9 @@ export async function createTopic(input: TopicInput) {
 export async function createPrompt(input: CreatePromptInput) {
     const normalizedText = input.text.trim().replace(/\s+/g, ' ')
     const normalizedTopic = input.topic.trim().replace(/\s+/g, ' ')
+    const isGeo = !!(input.country_code && input.country_name)
 
-    return prisma.prompt.create({
+    const prompt = await prisma.prompt.create({
         data: {
             text: normalizedText,
             topic: normalizedTopic,
@@ -227,6 +230,16 @@ export async function createPrompt(input: CreatePromptInput) {
             project_id: input.project_id,
             status: 'ACTIVE',
             source: 'CUSTOMER',
+            geo_enabled: isGeo,
+            ...(isGeo ? {
+                geo_variants: {
+                    create: {
+                        country_code: input.country_code!.toUpperCase(),
+                        country_name: input.country_name!,
+                        is_active: true,
+                    }
+                }
+            } : {})
         },
         select: {
             id: true,
@@ -242,6 +255,8 @@ export async function createPrompt(input: CreatePromptInput) {
             created_at: true,
         },
     })
+
+    return prompt
 }
 
 // ─── Geo Variant types ────────────────────────────────────────────────────────

@@ -1,5 +1,4 @@
 import prisma from "../../lib/prisma"
-import { PLAN_LIMITS, PLAN_PRICING } from "../subscription/plan_config"
 import { getMyPlan } from "../subscription/subscription_service"
 import type { SupportAgentContext } from "./customer_support_agent_types"
 
@@ -54,7 +53,7 @@ export async function buildCustomerSupportAgentContext(
             cancel_at_period_end: Boolean(plan.subscription?.cancel_at_period_end),
         },
         limits: plan.limits,
-        available_plans: buildAvailablePlans(),
+        available_plans: [],
         usage: {
             projects: plan.usage.project_count,
             prompts: plan.usage.prompt_count,
@@ -66,14 +65,6 @@ export async function buildCustomerSupportAgentContext(
         selected_project: selectedProject,
         recent_tickets: recentTickets,
     }
-}
-
-function buildAvailablePlans(): SupportAgentContext["available_plans"] {
-    return (["FREE", "STARTER", "GROWTH", "PRO"] as const).map(id => ({
-        id,
-        ...PLAN_PRICING[id],
-        limits: PLAN_LIMITS[id],
-    }))
 }
 
 async function getLatestProjectSupportContext(user_id: string) {
