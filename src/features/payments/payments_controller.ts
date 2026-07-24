@@ -26,7 +26,9 @@ export async function getTransactionsController(req: Request, res: Response): Pr
     const { user: { id: userId } } = req as AuthenticatedRequest
     const page  = Number(req.query.page)  || 1
     const limit = Number(req.query.limit) || 20
-    const result = await getCreditTransactions(userId, page, limit)
+    const days = req.query.days ? Number(req.query.days) : undefined
+    const type = req.query.type === "credit" || req.query.type === "debit" ? req.query.type : "all"
+    const result = await getCreditTransactions(userId, page, limit, { days, type })
     res.json(result)
 }
 

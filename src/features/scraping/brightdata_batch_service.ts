@@ -7,6 +7,7 @@ import {
     VisibilityRunStatus,
 } from "@prisma/client"
 import prisma from "../../lib/prisma"
+import { spendCredits } from "../credits/credits_service"
 import { runPrompt } from "../dashboard/dashboard_service"
 import { buildGeoPromptText } from "../prompts/prompt_service"
 import { buildBrightDataInput, getScraperId } from "./brightdata/engine_registry"
@@ -21,7 +22,7 @@ import { isRecord, normalizeErrorMessage, readNumber, readString } from "./brigh
 import { refreshRunStatus } from "./run_status_service"
 
 type ScrapeJobWithPrompt = Prisma.ScrapeJobGetPayload<{
-    include: { prompt: true }
+    include: { prompt: true; project: { select: { user_id: true } } }
 }>
 
 type BrightDataBatchWithItems = Prisma.BrightDataBatchGetPayload<{
@@ -29,7 +30,7 @@ type BrightDataBatchWithItems = Prisma.BrightDataBatchGetPayload<{
         items: {
             include: {
                 scrape_job: {
-                    include: { prompt: true }
+                    include: { prompt: true, project: { select: { user_id: true } } }
                 }
             }
         }
@@ -61,13 +62,13 @@ export async function triggerQueuedBrightDataBatches(options: {
             bright_data_batch_item: null,
             engine: { not: Engine.GOOGLE_AI_OVERVIEW },
         },
-        include: { prompt: true },
+        include: { prompt: true, project: { select: { user_id: true } } },
         orderBy: { created_at: "asc" },
         take: limit,
     })
 
     const groups = groupJobs(jobs)
-    const batches = []
+    const batches: Awaited<ReturnType<typeof createAndTriggerBatch>>[] = []
 
     for (const group of groups.values()) {
         for (let offset = 0; offset < group.jobs.length; offset += batchSize) {
@@ -110,7 +111,7 @@ export async function pollBrightDataBatches(options: {
         take: limit,
     })
 
-    const results = []
+    const results: Awaited<ReturnType<typeof pollOneBatch>>[] = []
     for (const batch of batches) {
         results.push(await pollOneBatch(batch))
     }
@@ -263,6 +264,7 @@ async function completeBatchFromRecords(batch: BrightDataBatchWithItems, records
     let completed = 0
     let failed = 0
     const runIds = new Set<string>()
+    const candidates: SuccessfulBatchCandidate[] = []
 
     for (const item of batch.items) {
         runIds.add(item.scrape_job.run_id)
@@ -288,52 +290,91 @@ async function completeBatchFromRecords(batch: BrightDataBatchWithItems, records
                 continue
             }
 
-            const chat = await runPrompt({
-                prompt_id: item.scrape_job.prompt_id,
-                run_id: item.scrape_job.run_id,
-                geo_variant_id: item.scrape_job.geo_variant_id,
-                geo_country_code: item.scrape_job.geo_country_code,
-                geo_country_name: item.scrape_job.geo_country_name,
-                geo_city: item.scrape_job.geo_city,
-                raw_response: result.answer_text,
-                ai_model: result.model_label,
-                screenshot_path: result.screenshot_path,
-                citations: result.citations,
-                enqueue_source_enrichment: process.env.SOURCE_ENRICHMENT_AUTO_ENQUEUE !== "false",
-                ingest_chat: false,
-            })
-
-            await prisma.$transaction([
-                prisma.prompt.update({
-                    where: { id: item.scrape_job.prompt_id },
-                    data: { last_run_at: new Date() },
-                }),
-                prisma.scrapeJob.update({
-                    where: { id: item.scrape_job.id },
-                    data: {
-                        status: ScrapeJobStatus.SUCCESS,
-                        chat_id: chat.id,
-                        answer_text: result.answer_text,
-                        raw_text: null, // Not stored - saves significant DB space (was storing full BrightData JSON)
-                        citations: result.citations,
-                        screenshot_path: result.screenshot_path,
-                        error_reason: result.error_reason,
-                        completed_at: new Date(),
-                    },
-                }),
-                prisma.brightDataBatchItem.update({
-                    where: { id: item.id },
-                    data: {
-                        status: BrightDataBatchItemStatus.SUCCESS,
-                        error_reason: null,
-                    },
-                }),
-            ])
-
-            completed += 1
+            candidates.push({ item, result: { ...result, answer_text: result.answer_text } })
         } catch (error) {
             failed += 1
             await markBatchItemFailed(item.id, item.scrape_job, normalizeErrorMessage(error))
+        }
+    }
+
+    const chargeableGroups = groupSuccessfulCandidatesByRun(candidates)
+
+    for (const group of chargeableGroups) {
+        try {
+            await spendCredits({
+                userId: group.user_id,
+                amount: group.items.length,
+                action: "PROMPT_RUN",
+                description: `Daily run - ${group.items.length} successful AI checks`,
+                idempotencyKey: `brightdata-run:${group.run_id}:batch:${batch.id}:prompt-run`,
+                metadata: {
+                    run_id: group.run_id,
+                    batch_id: batch.id,
+                    source: "brightdata_batch",
+                    successful_checks: group.items.length,
+                    engines: Array.from(new Set(group.items.map(candidate => candidate.item.scrape_job.engine))),
+                    scrape_job_ids: group.items.map(candidate => candidate.item.scrape_job.id),
+                },
+            })
+        } catch (error) {
+            const reason = normalizeErrorMessage(error)
+            failed += group.items.length
+            await Promise.all(group.items.map(candidate => (
+                markBatchItemFailed(candidate.item.id, candidate.item.scrape_job, reason)
+            )))
+            continue
+        }
+
+        for (const candidate of group.items) {
+            try {
+                const { item, result } = candidate
+                const chat = await runPrompt({
+                    prompt_id: item.scrape_job.prompt_id,
+                    run_id: item.scrape_job.run_id,
+                    geo_variant_id: item.scrape_job.geo_variant_id,
+                    geo_country_code: item.scrape_job.geo_country_code,
+                    geo_country_name: item.scrape_job.geo_country_name,
+                    geo_city: item.scrape_job.geo_city,
+                    raw_response: result.answer_text,
+                    ai_model: result.model_label,
+                    screenshot_path: result.screenshot_path,
+                    citations: result.citations,
+                    enqueue_source_enrichment: process.env.SOURCE_ENRICHMENT_AUTO_ENQUEUE !== "false",
+                    ingest_chat: false,
+                })
+
+                await prisma.$transaction([
+                    prisma.prompt.update({
+                        where: { id: item.scrape_job.prompt_id },
+                        data: { last_run_at: new Date() },
+                    }),
+                    prisma.scrapeJob.update({
+                        where: { id: item.scrape_job.id },
+                        data: {
+                            status: ScrapeJobStatus.SUCCESS,
+                            chat_id: chat.id,
+                            answer_text: result.answer_text,
+                            raw_text: null, // Not stored - saves significant DB space (was storing full BrightData JSON)
+                            citations: result.citations,
+                            screenshot_path: result.screenshot_path,
+                            error_reason: result.error_reason,
+                            completed_at: new Date(),
+                        },
+                    }),
+                    prisma.brightDataBatchItem.update({
+                        where: { id: item.id },
+                        data: {
+                            status: BrightDataBatchItemStatus.SUCCESS,
+                            error_reason: null,
+                        },
+                    }),
+                ])
+
+                completed += 1
+            } catch (error) {
+                failed += 1
+                await markBatchItemFailed(candidate.item.id, candidate.item.scrape_job, normalizeErrorMessage(error))
+            }
         }
     }
 
@@ -366,6 +407,26 @@ async function completeBatchFromRecords(batch: BrightDataBatchWithItems, records
         failed,
         input_count: batch.items.length,
     }
+}
+
+type SuccessfulBatchCandidate = {
+    item: BrightDataBatchWithItems["items"][number]
+    result: ReturnType<typeof normalizeBrightDataRecord> & { answer_text: string }
+}
+
+function groupSuccessfulCandidatesByRun(candidates: SuccessfulBatchCandidate[]) {
+    const groups = new Map<string, { run_id: string; user_id: string; items: SuccessfulBatchCandidate[] }>()
+
+    for (const candidate of candidates) {
+        const runId = candidate.item.scrape_job.run_id
+        const userId = candidate.item.scrape_job.project.user_id
+        const key = `${userId}:${runId}`
+        const current = groups.get(key) ?? { run_id: runId, user_id: userId, items: [] }
+        current.items.push(candidate)
+        groups.set(key, current)
+    }
+
+    return Array.from(groups.values())
 }
 
 function mapRecordsByIndex(records: BrightDataRecord[], items: BrightDataBatchWithItems["items"]) {

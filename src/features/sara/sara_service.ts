@@ -81,7 +81,8 @@ export async function chatWithSara(input: {
         take: 8
     })
 
-    const results = await searchSaraProject({
+    const skipRag = isTimeComparisonQuestion(input.message)
+    const results = skipRag ? [] : await searchSaraProject({
         user_id: input.user_id,
         project_id: input.project_id,
         query: `${input.page_context ? `${input.page_context}\n` : ""}${input.message}`,
@@ -91,7 +92,7 @@ export async function chatWithSara(input: {
     const evidence = [
         "Premium live facts packet:",
         contextPacket.text,
-        "Retrieved RAG evidence:",
+        skipRag ? "Retrieved RAG evidence: skipped because this is a time comparison metrics question." : "Retrieved RAG evidence:",
         formatSaraScope(scope),
         results.map((result, index) => formatEvidence(index + 1, result.payload ?? {})).join("\n\n")
     ].filter(Boolean).join("\n\n")
@@ -182,7 +183,8 @@ export async function chatWithSaraStream(input: {
         take: 8
     })
 
-    const results = await searchSaraProject({
+    const skipRag = isTimeComparisonQuestion(input.message)
+    const results = skipRag ? [] : await searchSaraProject({
         user_id: input.user_id,
         project_id: input.project_id,
         query: `${input.page_context ? `${input.page_context}\n` : ""}${input.message}`,
@@ -192,7 +194,7 @@ export async function chatWithSaraStream(input: {
     const evidence = [
         "Premium live facts packet:",
         contextPacket.text,
-        "Retrieved RAG evidence:",
+        skipRag ? "Retrieved RAG evidence: skipped because this is a time comparison metrics question." : "Retrieved RAG evidence:",
         formatSaraScope(scope),
         results.map((result, index) => formatEvidence(index + 1, result.payload ?? {})).join("\n\n")
     ].filter(Boolean).join("\n\n")
@@ -362,6 +364,7 @@ function buildSaraSystemPrompt(context: SaraContextPacket) {
         "If the user asks for a table, tabular format, comparison, dashboard summary, or beautiful summary, put a markdown table first, then add 2-3 concise bullets.",
         "Markdown table rule: every table row must be on its own line, with a blank line before and after the table. Never compress a table into one paragraph.",
         "For rank/position metrics, lower numbers are better. Say '#2.4 is stronger than #3.3' rather than calling 3.3 higher/better.",
+        "For time comparison questions such as today vs yesterday, this week vs previous week, week-over-week, daily comparison, or today vs a named date: use the matching comparison line or Recent daily stats from the live facts packet first. Compare visibility points, average position movement, sentiment movement, and response count. If a requested date/window has no analyzed responses, say that exact missing date/window prevents a real comparison. Do not answer with only current/all-time metrics.",
         "For today's dashboard questions, summarize visibility, average position, sentiment, responses analyzed, weak prompt areas, competitor signals, source gaps, and next actions.",
         "Use the Premium live facts packet first for dashboard, plan, usage, run status, source, competitor, and action queue questions.",
         "Use retrieved RAG evidence as supporting evidence for specific chats, prompts, sources, and historical details.",
@@ -413,6 +416,7 @@ function buildSaraStreamingSystemPrompt(context: SaraContextPacket) {
         "If the user asks for a table, tabular format, comparison, dashboard summary, or beautiful summary, put a markdown table first, then add 2-3 concise bullets.",
         "Markdown table rule: every table row must be on its own line, with a blank line before and after the table. Never compress a table into one paragraph.",
         "For rank/position metrics, lower numbers are better. Say '#2.4 is stronger than #3.3' rather than calling 3.3 higher/better.",
+        "For time comparison questions such as today vs yesterday, this week vs previous week, week-over-week, daily comparison, or today vs a named date: use the matching comparison line or Recent daily stats from the live facts packet first. Compare visibility points, average position movement, sentiment movement, and response count. If a requested date/window has no analyzed responses, say that exact missing date/window prevents a real comparison. Do not answer with only current/all-time metrics.",
         "For today's dashboard questions, summarize visibility, average position, sentiment, responses analyzed, weak prompt areas, competitor signals, source gaps, and next actions.",
         "Use the Premium live facts packet first for dashboard, plan, usage, run status, source, competitor, and action queue questions.",
         "Use retrieved RAG evidence as supporting evidence for specific chats, prompts, sources, and historical details.",
@@ -437,6 +441,21 @@ function buildSaraStreamingUserPrompt(message: string, evidence: string, history
         "Project evidence:",
         evidence || "No relevant evidence was retrieved."
     ].join("\n")
+}
+
+function isTimeComparisonQuestion(message: string) {
+    const normalized = message.toLowerCase()
+    const asksComparison = /\b(compare|vs|versus|change|changed|movement|delta|difference|trend|trending)\b/.test(normalized)
+    const hasRelativeTimePair =
+        (/\btoday\b/.test(normalized) && /\byesterday\b/.test(normalized)) ||
+        (/\bthis week\b/.test(normalized) && /\b(previous|last) week\b/.test(normalized)) ||
+        /\bweek[- ]over[- ]week\b/.test(normalized) ||
+        /\bwow\b/.test(normalized)
+    const hasSpecificDateComparison =
+        /\btoday\b/.test(normalized) &&
+        /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec|\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2})\b/.test(normalized)
+
+    return asksComparison && (hasRelativeTimePair || hasSpecificDateComparison)
 }
 
 function buildStreamingCitations(results: Awaited<ReturnType<typeof searchSaraProject>>) {

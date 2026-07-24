@@ -149,13 +149,28 @@ export async function getCreditTransactions(
     userId: string,
     page:   number = 1,
     limit:  number = 20,
+    options: { days?: number; type?: "all" | "credit" | "debit" } = {},
 ): Promise<{ transactions: object[]; total: number }> {
     const billingUserId = await resolveBillingUserId(userId)
     const skip = (page - 1) * limit
+    const safeDays = options.days ? Math.min(Math.max(options.days, 1), 30) : undefined
+    const createdAt = safeDays
+        ? { gte: new Date(Date.now() - safeDays * 24 * 60 * 60 * 1000) }
+        : undefined
+    const amount = options.type === "credit"
+        ? { gt: 0 }
+        : options.type === "debit"
+            ? { lt: 0 }
+            : undefined
+    const where = {
+        user_id: billingUserId,
+        ...(createdAt ? { created_at: createdAt } : {}),
+        ...(amount ? { amount } : {}),
+    }
 
     const [transactions, total] = await Promise.all([
         prisma.creditTransaction.findMany({
-            where:   { user_id: billingUserId },
+            where,
             orderBy: { created_at: "desc" },
             skip,
             take:    limit,
@@ -168,7 +183,7 @@ export async function getCreditTransactions(
                 created_at:  true,
             },
         }),
-        prisma.creditTransaction.count({ where: { user_id: billingUserId } }),
+        prisma.creditTransaction.count({ where }),
     ])
 
     return { transactions, total }
