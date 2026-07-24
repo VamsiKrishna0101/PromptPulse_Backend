@@ -9,6 +9,7 @@ function parseFilters(query: Request["query"]): DashboardFilters {
     if (query.days) filters.days = parseInt(query.days as string, 10)
     if (query.model && query.model !== "all") filters.model = query.model as string
     if (query.topic && query.topic !== "all") filters.topic = query.topic as string
+    if (query.tag && query.tag !== "all") filters.tag = query.tag as string
     if (query.prompt_id && query.prompt_id !== "all") filters.prompt_id = query.prompt_id as string
     if (query.q) filters.q = query.q as string
     if (query.country && query.country !== "all") filters.country = query.country as string
