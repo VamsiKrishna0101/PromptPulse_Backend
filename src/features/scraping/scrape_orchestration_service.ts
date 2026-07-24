@@ -129,7 +129,7 @@ export async function enqueueDailyRuns(options: {
         orderBy: { created_at: "asc" }
     })
 
-    const results = []
+    const results: Awaited<ReturnType<typeof enqueueProjectRun>>[] = []
     const spacingMs = options.enqueue_jobs === false
         ? 0
         : Number(process.env.PROJECT_DAILY_QUEUE_SPACING_MS ?? 900000)

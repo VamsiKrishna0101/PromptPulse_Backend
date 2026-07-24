@@ -135,6 +135,43 @@ export async function awardCredits(
 }
 
 /**
+ * Ensure a verified free-trial user has their one-time signup bonus.
+ * This prevents onboarding from dead-ending when a user reaches the first run
+ * before the verification/login credit-award path has refreshed their wallet.
+ */
+export async function ensureSignupBonusCredits(userId: string): Promise<number> {
+    const billingUserId = await resolveBillingUserId(userId)
+    await expireCreditBuckets(billingUserId)
+
+    const user = await prisma.user.findUnique({
+        where: { id: billingUserId },
+        select: { credits_balance: true, is_verified: true },
+    })
+
+    if (!user) return 0
+    if (!user.is_verified) return user.credits_balance
+
+    const existingBonus = await prisma.creditTransaction.findFirst({
+        where: {
+            user_id: billingUserId,
+            action: "SIGNUP_BONUS",
+        },
+        select: { id: true },
+    })
+
+    if (existingBonus) return user.credits_balance
+    if (user.credits_balance > 0) return user.credits_balance
+
+    return awardCredits(
+        billingUserId,
+        CREDIT_ACTIONS.SIGNUP_BONUS,
+        "SIGNUP_BONUS",
+        `${CREDIT_ACTIONS.SIGNUP_BONUS} free trial credits`,
+        { source: "trial_onboarding_guard" },
+    )
+}
+
+/**
  * Returns whether the user's balance is below the low-balance warning threshold.
  */
 export async function isLowBalance(userId: string): Promise<boolean> {

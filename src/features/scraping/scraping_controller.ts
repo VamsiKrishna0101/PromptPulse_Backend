@@ -6,7 +6,7 @@ import type { AuthenticatedRequest } from "../../middleware/auth"
 import { isActiveScrapeEngine } from "./scrape_engine_policy"
 import { assertCanUseProjectEngines } from "../project_engines/project_engines_service"
 import prisma from "../../lib/prisma"
-import { getCreditBalance } from "../payments/credits_service"
+import { ensureSignupBonusCredits, getCreditBalance } from "../payments/credits_service"
 import { CREDIT_COSTS } from "../subscription/plan_config"
 import { getProjectEngines } from "../project_engines/project_engines_service"
 
@@ -52,6 +52,7 @@ export const enqueueProjectRunController = async (req: Request, res: Response): 
         const selectedEngines = parsedEngines?.length ? parsedEngines : await getProjectEngines(project_id)
         const engineCount = selectedEngines.length
         const requestedJobs = prompts.reduce((total, prompt) => total + 1 + prompt._count.geo_variants, 0) * engineCount
+        await ensureSignupBonusCredits(userId)
         const availableCredits = await getCreditBalance(userId)
         const requiredCredits = requestedJobs * CREDIT_COSTS.prompt_run
         if (requiredCredits > availableCredits) {

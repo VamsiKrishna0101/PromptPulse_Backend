@@ -102,7 +102,7 @@ export async function pollBrightDataBatches(options: {
                 orderBy: { input_index: "asc" },
                 include: {
                     scrape_job: {
-                        include: { prompt: true },
+                        include: { prompt: true, project: { select: { user_id: true } } },
                     },
                 },
             },
@@ -290,6 +290,12 @@ async function completeBatchFromRecords(batch: BrightDataBatchWithItems, records
                 continue
             }
 
+            if (!item.scrape_job.project?.user_id) {
+                failed += 1
+                await markBatchItemFailed(item.id, item.scrape_job, "Scrape job is missing project billing owner.")
+                continue
+            }
+
             candidates.push({ item, result: { ...result, answer_text: result.answer_text } })
         } catch (error) {
             failed += 1
@@ -419,7 +425,8 @@ function groupSuccessfulCandidatesByRun(candidates: SuccessfulBatchCandidate[]) 
 
     for (const candidate of candidates) {
         const runId = candidate.item.scrape_job.run_id
-        const userId = candidate.item.scrape_job.project.user_id
+        const userId = candidate.item.scrape_job.project?.user_id
+        if (!userId) continue
         const key = `${userId}:${runId}`
         const current = groups.get(key) ?? { run_id: runId, user_id: userId, items: [] }
         current.items.push(candidate)
