@@ -89,6 +89,7 @@ export const CREDIT_COSTS = {
     weekly_email_report: 25,
     reddit_intelligence_standard: 25,
     reddit_intelligence_deep: 50,
+    seo_audit: 15,
 } as const
 
 export function getPromptLimitForPlan(plan: Plan) {

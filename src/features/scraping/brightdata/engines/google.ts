@@ -1,5 +1,5 @@
 import type { EngineConfig, UiEngine } from "../types"
-import { buildBaseInput } from "./common"
+import { buildIndexedInput } from "./common"
 
 export const GOOGLE_AI_MODE_SEARCH_SCRAPER_ID = "gd_mcswdt6z2elth3zqr2"
 
@@ -10,7 +10,7 @@ export const googleAiModeConfig: EngineConfig = {
     scraperEnvName: "BRIGHT_DATA_GOOGLE_AI_MODE_SCRAPER_ID",
     urlEnvName: "BRIGHT_DATA_GOOGLE_AI_MODE_URL",
     buildInput: params => {
-        const payload = buildBaseInput(params)
+        const payload = buildIndexedInput(params)
         payload.hl = getGoogleLanguage("google_ai_mode")
         return payload
     },
@@ -22,7 +22,7 @@ export const googleAiOverviewConfig: EngineConfig = {
     scraperEnvName: "BRIGHT_DATA_GOOGLE_AI_OVERVIEW_SCRAPER_ID",
     urlEnvName: "BRIGHT_DATA_GOOGLE_AI_OVERVIEW_URL",
     buildInput: params => {
-        const payload = buildBaseInput(params)
+        const payload = buildIndexedInput(params)
         payload.hl = getGoogleLanguage("google_ai_overview")
         return payload
     },

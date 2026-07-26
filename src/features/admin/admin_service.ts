@@ -70,6 +70,7 @@ export const adminParsers = {
 export async function getAdminOverview() {
     const sevenDaysAgo = startOfDay(7)
     const thirtyDaysAgo = startOfDay(30)
+    const today = startOfDay(0)
 
     const [
         totalUsers,
@@ -84,6 +85,7 @@ export async function getAdminOverview() {
         subscriptionsByStatus,
         recentUsers,
         recentTickets,
+        todayJobRows,
     ] = await Promise.all([
         prisma.user.count(),
         prisma.user.count({ where: { created_at: { gte: sevenDaysAgo } } }),
@@ -130,9 +132,23 @@ export async function getAdminOverview() {
                 created_at: true,
             },
         }),
+        prisma.scrapeJob.groupBy({
+            by: ["status"],
+            where: { created_at: { gte: today } },
+            _count: { _all: true },
+        }),
     ])
 
     const estimatedMrrCents = revenueRows.reduce((sum, row) => sum + (row._sum.amount_cents ?? 0), 0)
+    const todayJobs = {
+        total: todayJobRows.reduce((sum, row) => sum + row._count._all, 0),
+        queued: todayJobRows.find(row => row.status === "QUEUED")?._count._all ?? 0,
+        running: todayJobRows.find(row => row.status === "RUNNING")?._count._all ?? 0,
+        success: todayJobRows.find(row => row.status === "SUCCESS")?._count._all ?? 0,
+        failed: todayJobRows.find(row => row.status === "FAILED")?._count._all ?? 0,
+        manual_needed: todayJobRows.find(row => row.status === "MANUAL_NEEDED")?._count._all ?? 0,
+        rate_limited: todayJobRows.find(row => row.status === "RATE_LIMITED")?._count._all ?? 0,
+    }
 
     return {
         summary: {
@@ -145,6 +161,7 @@ export async function getAdminOverview() {
             active_subscriptions: activeSubscriptions,
             estimated_mrr_cents: estimatedMrrCents,
         },
+        today_jobs: todayJobs,
         users_by_plan: Object.values(Plan).map(plan => ({
             plan,
             count: usersByPlan.find(row => row.plan === plan)?._count._all ?? 0,

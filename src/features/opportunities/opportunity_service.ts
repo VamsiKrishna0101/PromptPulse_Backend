@@ -1,6 +1,6 @@
 import prisma from "../../lib/prisma"
 import { buildChatWhere, type DashboardFilters } from "../dashboard/dashboard_service"
-import type { ContentGapPlan, OpportunityConfidence, OpportunityEffort, OpportunityImpact, OpportunityItem, OpportunitySource, OpportunityType, OpportunitiesResponse } from "./opportunity_types"
+import type { ContentGapPlan, OpportunityBucket, OpportunityConfidence, OpportunityEffort, OpportunityImpact, OpportunityItem, OpportunitySource, OpportunityType, OpportunitiesResponse, SourceActionability } from "./opportunity_types"
 
 type ChatWithEvidence = Awaited<ReturnType<typeof loadOpportunityChats>>[number]
 
@@ -82,6 +82,128 @@ function isLowSignalDomain(domain: string) {
     return /^google\./.test(normalized) || ["youtube.com", "youtu.be"].includes(normalized)
 }
 
+function normalizeDomain(domain: string) {
+    return domain.toLowerCase().replace(/^www\./, "").trim()
+}
+
+function classifySource(domain: string, title: string | null, ownBrand: string, competitorName: string): {
+    actionability: SourceActionability
+    pattern: string
+    recommended_action: string
+} {
+    const normalized = normalizeDomain(domain)
+    const titleText = (title ?? "").toLowerCase()
+    const own = ownBrand.toLowerCase().replace(/[^a-z0-9]+/g, "")
+    const competitor = competitorName.toLowerCase().replace(/[^a-z0-9]+/g, "")
+    const compactDomain = normalized.replace(/[^a-z0-9]+/g, "")
+
+    const noisyDomains = [
+        "google.", "chatgpt.com", "openai.com", "gemini.google.com", "perplexity.ai", "copilot.microsoft.com",
+        "bing.com", "youtube.com", "youtu.be", "facebook.com", "instagram.com", "x.com", "twitter.com",
+        "accounts.google.com", "login.", "cdn.", "cloudfront.net"
+    ]
+    if (noisyDomains.some(item => normalized.includes(item))) {
+        return {
+            actionability: "NOT_ACTIONABLE",
+            pattern: "Platform / noisy source",
+            recommended_action: "Monitor only. Do not spend time trying to influence this source directly.",
+        }
+    }
+
+    if ((own && compactDomain.includes(own)) || (competitor && compactDomain.includes(competitor))) {
+        return {
+            actionability: "NOT_ACTIONABLE",
+            pattern: compactDomain.includes(own) ? "Owned domain" : "Competitor-owned domain",
+            recommended_action: compactDomain.includes(own)
+                ? "Use this as proof your owned content is being found; improve the page if rank is weak."
+                : "Monitor only. Do not try to publish on competitor-owned pages.",
+        }
+    }
+
+    const highIntentDirectories = [
+        "google.com/maps", "business.google.com", "practo.com", "justdial.com", "sulekha.com", "lybrate.com",
+        "credihealth.com", "apollo247.com", "medindia.net", "mouthshut.com", "indiamart.com", "tradeindia.com",
+        "g2.com", "capterra.com", "trustradius.com", "producthunt.com", "clutch.co", "goodfirms.co",
+        "trustpilot.com", "softwareadvice.com"
+    ]
+    if (highIntentDirectories.some(item => normalized.includes(item))) {
+        return {
+            actionability: "HIGH",
+            pattern: "Directory / review source",
+            recommended_action: "Claim or optimize the profile, add services/categories, collect reviews, and keep NAP/proof details fresh.",
+        }
+    }
+
+    const communityOrEditorial = [
+        "reddit.com", "quora.com", "medium.com", "substack.com", "linkedin.com", "news18.com", "yourstory.com",
+        "entrepreneur.com", "forbes.com", "inc.com", "economictimes.indiatimes.com", "timesofindia.indiatimes.com",
+        "hindustantimes.com", "thehindu.com", "business-standard.com"
+    ]
+    if (communityOrEditorial.some(item => normalized.includes(item)) || /\b(best|top|compare|review|alternatives|guide)\b/.test(titleText)) {
+        return {
+            actionability: "MEDIUM",
+            pattern: "Editorial / community source",
+            recommended_action: "Earn mentions through useful comparisons, expert quotes, case studies, PR, or founder/community participation.",
+        }
+    }
+
+    if (/\.(gov|edu)(\.|$)/.test(normalized) || normalized.endsWith(".gov.in") || normalized.endsWith(".edu.in") || titleText.includes("pdf")) {
+        return {
+            actionability: "LOW",
+            pattern: "Authority reference",
+            recommended_action: "Use as context and cite it in your own content. Direct influence is usually slow or not practical.",
+        }
+    }
+
+    return {
+        actionability: "MEDIUM",
+        pattern: "Relevant web source",
+        recommended_action: "Review whether the page accepts updates, citations, partnerships, comments, listings, or source-backed outreach.",
+    }
+}
+
+function actionabilityWeight(actionability: SourceActionability) {
+    if (actionability === "HIGH") return 4
+    if (actionability === "MEDIUM") return 3
+    if (actionability === "LOW") return 2
+    return 1
+}
+
+function overallActionability(sources: OpportunitySource[], type: OpportunityType): SourceActionability {
+    if (sources.some(source => source.actionability === "HIGH")) return "HIGH"
+    if (sources.some(source => source.actionability === "MEDIUM")) return "MEDIUM"
+    if (type === "MISSING") return "MEDIUM"
+    if (sources.some(source => source.actionability === "LOW")) return "LOW"
+    return "NOT_ACTIONABLE"
+}
+
+function opportunityBucket(input: {
+    type: OpportunityType
+    effort: OpportunityEffort
+    impact: OpportunityImpact
+    actionability: SourceActionability
+    sources: OpportunitySource[]
+    confidence: OpportunityConfidence
+}): OpportunityBucket {
+    if (input.confidence === "NEEDS_REVIEW" || input.actionability === "NOT_ACTIONABLE") return "MONITOR"
+    if (input.impact !== "LOW" && input.effort === "LOW" && (input.actionability === "HIGH" || input.type === "MISSING")) return "QUICK_WIN"
+    if (input.type === "SOURCE_GAP" || input.sources.some(source => source.actionability === "HIGH")) return "SOURCE_GAP"
+    if (input.sources.some(source => source.actionability === "LOW")) return "AUTHORITY_GAP"
+    return "CONTENT_GAP"
+}
+
+function sourcePattern(sources: OpportunitySource[]) {
+    if (!sources.length) return null
+    const best = [...sources].sort((a, b) => {
+        const actionGap = actionabilityWeight(b.actionability) - actionabilityWeight(a.actionability)
+        if (actionGap) return actionGap
+        return b.mentions - a.mentions
+    })[0]
+    if (!best) return null
+    const rank = best.avg_rank ? ` around rank #${best.avg_rank}` : ""
+    return `${best.source_type ?? "Source"} pattern: ${best.domain} appears ${best.mentions} time${best.mentions === 1 ? "" : "s"}${rank}.`
+}
+
 function inferContentType(promptText: string, type: OpportunityType) {
     const text = promptText.toLowerCase()
 
@@ -143,7 +265,10 @@ function missingAngles(input: {
     return Array.from(angles).slice(0, 4)
 }
 
-function optimizationFocus(type: OpportunityType) {
+function optimizationFocus(type: OpportunityType, sources: OpportunitySource[] = []) {
+    if (sources.some(source => source.actionability === "HIGH")) {
+        return ["Optimize high-actionability profiles", "Add review proof", "Match service/category language"]
+    }
     if (type === "MISSING") {
         return ["Create one focused page", "Add FAQs", "Mention category and use cases"]
     }
@@ -189,7 +314,11 @@ function buildContentGapPlan(input: {
         action,
         priority_reason: `Impact score ${input.impactScore}; confidence ${input.confidence.toLowerCase()}; competitor visibility ${rounded(input.competitorVisibility)}% vs your ${rounded(input.ownVisibility)}%.`,
         missing_angles: missingAngles({ type: input.type, competitorName: input.competitorName, sources: input.sources, canUseCompetitor, promptWarning: input.promptWarning }),
-        optimization_focus: optimizationFocus(input.type),
+        optimization_focus: optimizationFocus(input.type, input.sources),
+        source_actions: input.sources
+            .filter(source => source.actionability !== "NOT_ACTIONABLE")
+            .slice(0, 3)
+            .map(source => `${source.domain}: ${source.recommended_action}`),
     }
 }
 
@@ -238,7 +367,8 @@ function nextStep(input: {
         return "Review the raw answers first. If the competitor mention is valid, create a focused page that answers the prompt with buyer criteria, pricing/value, proof, FAQs, and credible citations."
     }
     if (input.type === "SOURCE_GAP" && input.sources.length) {
-        return `Prioritize ${input.sources.slice(0, 2).map(source => source.domain).join(" and ")} with comparison, category, or editorial proof for this prompt.`
+        const actionable = input.sources.find(source => source.actionability === "HIGH" || source.actionability === "MEDIUM") ?? input.sources[0]
+        return `Prioritize ${actionable.domain}: ${actionable.recommended_action}`
     }
     if (input.type === "MISSING" && canUseCompetitor) {
         return `Create or refresh a page that directly answers this prompt, then make sure ${input.competitor} comparison language is covered honestly.`
@@ -273,6 +403,9 @@ async function loadOpportunityChats(project_id: string, filters: DashboardFilter
                     title: true,
                     source_type: true,
                     is_cited: true,
+                    source_kind: true,
+                    source_position: true,
+                    answer_position: true,
                 }
             }
         },
@@ -311,8 +444,8 @@ function confidenceForOpportunity(input: {
     }
 }
 
-function sourceEvidence(chats: ChatWithEvidence[], competitorName: string, cleanOnly = false): OpportunitySource[] {
-    const domainMap = new Map<string, OpportunitySource>()
+function sourceEvidence(chats: ChatWithEvidence[], competitorName: string, brandName: string, cleanOnly = false): OpportunitySource[] {
+    const domainMap = new Map<string, OpportunitySource & { rankTotal: number; rankCount: number }>()
 
     for (const chat of chats) {
         const competitorWasMentioned = hasCompetitorMention(chat, competitorName)
@@ -325,17 +458,43 @@ function sourceEvidence(chats: ChatWithEvidence[], competitorName: string, clean
             if (cleanOnly && isLowSignalDomain(source.domain)) continue
             uniqueDomains.add(source.domain)
             const existing = domainMap.get(source.domain)
+            const classified = classifySource(source.domain, source.title, brandName, competitorName)
+            const rank = source.answer_position ?? source.source_position ?? null
             domainMap.set(source.domain, {
                 domain: source.domain,
                 title: existing?.title ?? source.title ?? null,
-                source_type: existing?.source_type ?? source.source_type ?? null,
+                source_type: existing?.source_type ?? source.source_type ?? classified.pattern,
                 mentions: (existing?.mentions ?? 0) + 1,
+                citations: (existing?.citations ?? 0) + (source.is_cited ? 1 : 0),
+                avg_rank: null,
+                source_kind: existing?.source_kind ?? source.source_kind ?? null,
+                actionability: existing?.actionability ?? classified.actionability,
+                recommended_action: existing?.recommended_action ?? classified.recommended_action,
+                rankTotal: (existing?.rankTotal ?? 0) + (rank ?? 0),
+                rankCount: (existing?.rankCount ?? 0) + (rank !== null ? 1 : 0),
             })
         }
     }
 
     return Array.from(domainMap.values())
-        .sort((a, b) => b.mentions - a.mentions)
+        .map(source => ({
+            domain: source.domain,
+            title: source.title,
+            source_type: source.source_type,
+            mentions: source.mentions,
+            citations: source.citations,
+            avg_rank: source.rankCount ? rounded(source.rankTotal / source.rankCount) : null,
+            source_kind: source.source_kind,
+            actionability: source.actionability,
+            recommended_action: source.recommended_action,
+        }))
+        .sort((a, b) => {
+            const actionGap = actionabilityWeight(b.actionability) - actionabilityWeight(a.actionability)
+            if (actionGap) return actionGap
+            const citationGap = b.citations - a.citations
+            if (citationGap) return citationGap
+            return b.mentions - a.mentions
+        })
         .slice(0, 4)
 }
 
@@ -353,7 +512,7 @@ function buildOpportunity(input: {
     competitorSentiment: number | null
     totalChats: number
 }): OpportunityItem {
-    const sources = sourceEvidence(input.promptChats, input.competitorName, true)
+    const sources = sourceEvidence(input.promptChats, input.competitorName, input.brandName, true)
     const cleanChats = cleanCompetitorChats(input.promptChats, input.competitorName)
     const noisyEvidenceCount = input.promptChats.filter(chat => hasCompetitorMention(chat, input.competitorName) && isNoisySearchResult(chat.raw_response)).length
     const promptWarning = promptIntentWarning(input.prompt.text)
@@ -371,7 +530,17 @@ function buildOpportunity(input: {
     const evidenceBoost = Math.min(16, input.totalChats * 3)
     const rawImpactScore = Math.min(100, Math.round(visibilityGap * 1.15 + rankGap + sentimentGap + evidenceBoost + sources.length * 3))
     const impactScore = capImpactForConfidence(rawImpactScore, confidenceResult.confidence)
-    const effort = effortFor(input.type, sources.length)
+    const effort = effortFor(input.type, sources.filter(source => source.actionability !== "NOT_ACTIONABLE").length)
+    const actionability = overallActionability(sources, input.type)
+    const impact = impactLabel(impactScore)
+    const bucket = opportunityBucket({
+        type: input.type,
+        effort,
+        impact,
+        actionability,
+        sources,
+        confidence: confidenceResult.confidence,
+    })
     const sample = input.promptChats.find(chat =>
         hasCompetitorMention(chat, input.competitorName)
     )?.raw_response
@@ -392,13 +561,16 @@ function buildOpportunity(input: {
         own_sentiment: input.ownSentiment ? rounded(input.ownSentiment) : null,
         competitor_sentiment: input.competitorSentiment ? rounded(input.competitorSentiment) : null,
         impact_score: impactScore,
-        impact: impactLabel(impactScore),
+        impact,
         effort,
         evidence_count: input.totalChats,
         clean_evidence_count: cleanChats.length,
         confidence: confidenceResult.confidence,
         confidence_reasons: confidenceResult.reasons,
         prompt_intent_warning: promptWarning,
+        opportunity_bucket: bucket,
+        actionability,
+        source_pattern: sourcePattern(sources),
         top_sources: sources,
         content_gap: buildContentGapPlan({
             type: input.type,
@@ -482,7 +654,7 @@ export async function getOpportunities(project_id: string, filters: DashboardFil
             const competitorVisibility = (competitor.count / total) * 100
             const competitorPosition = avg(competitor.positions)
             const competitorSentiment = avg(competitor.sentiments)
-            const sourceCount = sourceEvidence(promptChats, competitorName, true).length
+            const sourceCount = sourceEvidence(promptChats, competitorName, project.brand_name, true).filter(source => source.actionability !== "NOT_ACTIONABLE").length
             const visibilityGap = competitorVisibility - ownVisibility
             const rankGap = ownPosition !== null && competitorPosition !== null ? ownPosition - competitorPosition : 0
             const sentimentGap = ownSentiment !== null && competitorSentiment !== null ? competitorSentiment - ownSentiment : 0

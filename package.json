@@ -23,6 +23,7 @@
     "test:queue-flow": "tsx src/scripts/test_queue_scrape_flow.ts",
     "test:e2e-scrape-analysis": "tsx src/scripts/test_e2e_scrape_analysis.ts",
     "test:all-scrapers": "tsx src/scripts/test_all_scrapers.ts",
+    "test:brightdata-serp": "tsx src/scripts/test_brightdata_serp.ts",
     "backfill:answer-blocks": "tsx src/scripts/backfill_answer_blocks.ts",
     "reindex:sara": "tsx src/scripts/reindex_sara_project.ts",
     "migrate:pg": "tsx src/scripts/apply_migrations_pg.ts",

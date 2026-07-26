@@ -289,14 +289,29 @@ function buildSourceRows(
         source_type: 'EDITORIAL' | 'CORPORATE' | 'UGC' | 'SOCIAL' | 'COMPETITOR' | 'YOU' | 'REFERENCE' | 'INSTITUTIONAL' | 'OTHER'
         is_cited: boolean
     }[],
-    citations: { text: string; url: string }[]
+    citations: {
+        text: string
+        url: string
+        domain?: string | null
+        snippet?: string | null
+        position?: number | null
+        answer_position?: number | null
+        is_cited?: boolean
+        source_kind?: string | null
+    }[]
 ) {
     const rows: {
         url: string
         domain: string
         source_type: 'EDITORIAL' | 'CORPORATE' | 'UGC' | 'SOCIAL' | 'COMPETITOR' | 'YOU' | 'REFERENCE' | 'INSTITUTIONAL' | 'OTHER'
+        url_type?: 'LISTICLE' | 'COMPARISON' | 'DISCUSSION' | 'ARTICLE' | 'DOCUMENTATION' | 'REVIEW' | 'SOCIAL_POST' | 'HOMEPAGE' | 'OTHER'
         is_cited: boolean
+        used_by_ai?: boolean
         title?: string | null
+        snippet?: string | null
+        source_kind?: string | null
+        source_position?: number | null
+        answer_position?: number | null
     }[] = []
     const byKey = new Map<string, typeof rows[number]>()
 
@@ -310,6 +325,10 @@ function buildSourceRows(
             domain: domain || url || "unknown-source",
             source_type: source.source_type || "OTHER",
             is_cited: Boolean(source.is_cited),
+            used_by_ai: true,
+            source_kind: null,
+            source_position: null,
+            answer_position: null,
         }
         byKey.set(sourceKey(row.url, row.domain), row)
     }
@@ -317,22 +336,34 @@ function buildSourceRows(
     for (const citation of citations) {
         const url = citation.url?.trim()
         if (!url) continue
-        const domain = safeDomain(url)
+        const domain = citation.domain?.trim() || safeDomain(url)
         const key = sourceKey(url, domain)
         const existing = byKey.get(key)
         const title = citation.text && citation.text !== url ? citation.text : null
+        const isCited = citation.is_cited ?? (citation.source_kind === "citation" || citation.source_kind === "attached_link")
 
         byKey.set(key, {
             url,
             domain,
             source_type: existing?.source_type ?? "OTHER",
-            is_cited: true,
+            url_type: existing?.url_type ?? sourceKindToUrlType(citation.source_kind),
+            is_cited: Boolean(citation.is_cited !== undefined ? isCited : existing?.is_cited || isCited),
+            used_by_ai: true,
             title: existing?.title ?? title,
+            snippet: existing?.snippet ?? citation.snippet ?? null,
+            source_kind: existing?.source_kind ?? citation.source_kind ?? null,
+            source_position: existing?.source_position ?? citation.position ?? null,
+            answer_position: existing?.answer_position ?? citation.answer_position ?? null,
         })
     }
 
     rows.push(...byKey.values())
     return rows
+}
+
+function sourceKindToUrlType(sourceKind: string | null | undefined) {
+    if (sourceKind === "reference") return "DOCUMENTATION"
+    return "OTHER"
 }
 
 function sourceKey(url: string | null | undefined, domain: string | null | undefined) {
@@ -518,7 +549,26 @@ export async function getRecentChats(project_id: string, filters?: DashboardFilt
         where: chatWhere,
         include: {
             brand_mentions: { select: { brand_name: true, sentiment_score: true, position: true } },
-            sources: { select: { domain: true, url: true, title: true } },
+            sources: {
+                select: {
+                    domain: true,
+                    url: true,
+                    title: true,
+                    snippet: true,
+                    is_cited: true,
+                    source_type: true,
+                    url_type: true,
+                    source_kind: true,
+                    source_position: true,
+                    answer_position: true,
+                },
+                orderBy: [
+                    { is_cited: "desc" },
+                    { answer_position: "asc" },
+                    { source_position: "asc" },
+                    { created_at: "asc" },
+                ],
+            },
             prompt: { select: { text: true } },
             run: { select: { ran_at: true } }
         },
@@ -560,7 +610,26 @@ export async function getChatsPage(project_id: string, filters?: DashboardFilter
             where: chatWhere,
             include: {
                 brand_mentions: { select: { brand_name: true, sentiment_score: true, position: true } },
-                sources: { select: { domain: true, url: true, title: true } },
+                sources: {
+                    select: {
+                        domain: true,
+                        url: true,
+                        title: true,
+                        snippet: true,
+                        is_cited: true,
+                        source_type: true,
+                        url_type: true,
+                        source_kind: true,
+                        source_position: true,
+                        answer_position: true,
+                    },
+                    orderBy: [
+                        { is_cited: "desc" },
+                        { answer_position: "asc" },
+                        { source_position: "asc" },
+                        { created_at: "asc" },
+                    ],
+                },
                 prompt: { select: { text: true } },
                 run: { select: { ran_at: true } }
             },

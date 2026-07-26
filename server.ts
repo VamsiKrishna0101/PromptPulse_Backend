@@ -30,6 +30,7 @@ import redditIntelligenceRoutes from './src/features/reddit_intelligence/reddit_
 import brandPreferenceRoutes from './src/features/brand_preferences/brand_preferences_routes'
 import landingChatRoutes from './src/features/landing_chat/landing_chat_routes'
 import agencyRoutes from './src/features/agency/agency_routes'
+import seoRoutes from './src/features/seo/seo_routes'
 import { acceptInvitationController } from './src/features/agency/agency_controller'
 import paymentsRoutes from './src/features/payments/payments_routes'
 import { createStandardOrderController, verifyStandardPaymentController } from './src/features/payments/payments_controller'
@@ -90,6 +91,7 @@ app.use('/api/customer-support-agent', requireAuth, customerSupportAgentRoutes)
 app.use('/api/reddit-intelligence', requireAuth, redditIntelligenceRoutes)
 app.use('/api/brand-preferences', requireAuth, brandPreferenceRoutes)
 app.use('/api/agency', requireAuth, agencyRoutes)
+app.use('/api/seo', requireAuth, seoRoutes)
 app.post('/api/create-order', requireAuth, createStandardOrderController)
 app.post('/api/verify-payment', requireAuth, verifyStandardPaymentController)
 app.use('/api/payments', paymentsRoutes)

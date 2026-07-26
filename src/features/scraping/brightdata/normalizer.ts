@@ -1,19 +1,21 @@
 import type { BrightDataRecord, UiCitation, UiEngine, UiScrapeResult } from "./types"
-import { arrayFrom, isRecord, readString, safeJsonStringify } from "./utils"
+import { arrayFrom, isRecord, readNumber, readString, safeJsonStringify } from "./utils"
 
 export function normalizeBrightDataRecord(engine: UiEngine, prompt: string, record: BrightDataRecord): UiScrapeResult {
     const errorText = readString(record, ["error", "warning", "message"])
-    const answer = compactUnique([
+    const rawAnswer = compactUnique([
         chooseAnswerText(record),
         readString(record, ["additional_answer_text"]),
-    ]).join("\n\n").trim()
+    ].map(repairMojibake)).join("\n\n").trim()
+
+    const citations = extractCitations(record)
+    const answer = cleanAnswerText(engine, rawAnswer, citations)
 
     if (!answer && errorText) {
         throw new Error(`Bright Data record error: ${errorText}`)
     }
 
     const model = readString(record, ["model", "model_name", "ai_model"]) ?? "ai-search"
-    const citations = extractCitations(record)
 
     return {
         engine,
@@ -81,39 +83,49 @@ function hasSnapshotId(value: unknown) {
 }
 
 function extractCitations(record: BrightDataRecord): UiCitation[] {
-    const candidates = [
-        ...arrayFrom(record.citations),
-        ...arrayFrom(record.search_sources),
-        ...arrayFrom(record.search_sources_more),
-        ...arrayFrom(record.sources),
-        ...arrayFrom(record.links_attached),
-        ...arrayFrom(record.references),
+    const candidates: Array<{ value: unknown, source_kind: NonNullable<UiCitation["source_kind"]>, default_cited: boolean }> = [
+        ...arrayFrom(record.citations).map(value => ({ value, source_kind: "citation" as const, default_cited: true })),
+        ...arrayFrom(record.links_attached).map(value => ({ value, source_kind: "attached_link" as const, default_cited: true })),
+        ...arrayFrom(record.search_sources).map(value => ({ value, source_kind: "search_source" as const, default_cited: false })),
+        ...arrayFrom(record.search_sources_more).map(value => ({ value, source_kind: "search_source_more" as const, default_cited: false })),
+        ...arrayFrom(record.sources).map(value => ({ value, source_kind: "source" as const, default_cited: false })),
+        ...arrayFrom(record.references).map(value => ({ value, source_kind: "reference" as const, default_cited: false })),
     ]
 
     const seen = new Set<string>()
     const citations: UiCitation[] = []
+    const maxSources = Math.max(1, Number(process.env.BRIGHT_DATA_MAX_SOURCES_PER_RECORD ?? 32))
 
     for (const candidate of candidates) {
-        if (!isRecord(candidate)) continue
-        const url = readString(candidate, ["url", "link", "href"])
-        const text = readString(candidate, ["title", "text", "name", "domain"]) ?? url
+        if (!isRecord(candidate.value)) continue
+        const url = readString(candidate.value, ["url", "link", "href"])
+        const text = repairMojibake(readString(candidate.value, ["title", "text", "name", "domain"])) ?? url
         if (!url && !text) continue
 
-        const key = `${url ?? ""}|${text ?? ""}`.toLowerCase()
+        const key = normalizeSourceKey(url ?? text ?? "")
         if (seen.has(key)) continue
         seen.add(key)
 
+        const explicitCited = candidate.value.cited
         citations.push({
             text: text ?? url ?? "Source",
             url: url ?? "",
+            domain: normalizeCitationDomain(repairMojibake(readString(candidate.value, ["domain"])) ?? url),
+            snippet: repairMojibake(readString(candidate.value, ["snippet", "description"])),
+            position: readNumber(candidate.value, ["position", "rank"]),
+            answer_position: readNumber(candidate.value, ["answer_position"]),
+            is_cited: typeof explicitCited === "boolean" ? explicitCited : candidate.default_cited,
+            source_kind: candidate.source_kind,
         })
+
+        if (citations.length >= maxSources) break
     }
 
     return citations
 }
 
 function chooseAnswerText(record: BrightDataRecord) {
-    const markdownAnswer = readString(record, ["answer_text_markdown", "answer_markdown"])
+    const markdownAnswer = readString(record, ["answer_text_markdown", "answer_markdown", "exported_markdown"])
     const plainAnswer = readString(record, [
         "answer_text",
         "answer",
@@ -136,6 +148,65 @@ function chooseAnswerText(record: BrightDataRecord) {
     if (nestedAnswer) return nestedAnswer
 
     return undefined
+}
+
+function cleanAnswerText(engine: UiEngine, answer: string, citations: UiCitation[]) {
+    const cleaned = (engine === "copilot" ? removeInlineSourceArtifacts(answer, citations) : answer)
+        .replace(/\n{3,}/g, "\n\n")
+        .replace(/[ \t]+\n/g, "\n")
+        .trim()
+
+    if (engine !== "copilot") return cleaned
+
+    return cleaned
+        .replace(/(\*\*|[.!?])([💳🔑⚠️✅📌])/g, "$1\n\n$2")
+        .replace(/([.!?])(\*\s+\*\*)/g, "$1\n\n$2")
+        .replace(/\*\*([.!?])([A-Z])/g, "**$1\n\n$2")
+        .replace(/([.!?])([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,4}\s*-{2,})/g, "$1\n\n$2")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim()
+}
+
+function removeInlineSourceArtifacts(answer: string, citations: UiCitation[]) {
+    if (!answer || citations.length === 0) return answer
+
+    let cleaned = answer
+    const sourceLabels = citations
+        .flatMap(citation => [citation.domain, citation.text])
+        .filter((value): value is string => Boolean(value?.trim()))
+        .map(value => value.trim())
+        .filter(value => value.length >= 4 && value.length <= 120)
+        .sort((a, b) => b.length - a.length)
+
+    for (const label of sourceLabels) {
+        const escaped = escapeRegExp(label)
+        if (looksLikeDomain(label)) {
+            const domain = normalizeCitationDomain(label) ?? label
+            const domainPattern = escapeRegExp(domain)
+            cleaned = cleaned
+                .replace(new RegExp(`(?:https?:\\/\\/)?(?:www\\.)?${domainPattern}(?:\\+\\d+)?\\.?\\s*`, "gi"), "")
+        } else {
+            cleaned = cleaned
+                .split(label).join(" ")
+                .replace(new RegExp(`(?:^|\\s)${escaped}(?=(?:\\s|$|[.!?,;:]))`, "g"), " ")
+        }
+    }
+
+    return cleaned
+        .replace(/\+\d+/g, "")
+        .replace(/\s+([,.!?;:])/g, "$1")
+        .replace(/([.!?]){2,}/g, "$1")
+        .replace(/[ \t]{2,}/g, " ")
+        .replace(/\n[ \t]+/g, "\n")
+        .trim()
+}
+
+function looksLikeDomain(value: string) {
+    return /^(?:https?:\/\/)?(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:\/)?$/i.test(value.trim())
+}
+
+function escapeRegExp(value: string) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
 const ANSWER_FIELD_HINTS = [
@@ -185,12 +256,36 @@ function looksLikeUrlOnly(value: string) {
     return /^https?:\/\/\S+$/i.test(value.trim())
 }
 
+function normalizeSourceKey(value: string) {
+    return value
+        .trim()
+        .toLowerCase()
+        .replace(/^https?:\/\//, "")
+        .replace(/^www\./, "")
+        .replace(/[?#].*$/, "")
+        .replace(/\/$/, "")
+}
+
+function normalizeCitationDomain(value: string | undefined) {
+    if (!value) return undefined
+    const trimmed = value.trim()
+    try {
+        return new URL(trimmed).hostname.replace(/^www\./, "")
+    } catch {
+        return trimmed
+            .replace(/^https?:\/\//i, "")
+            .replace(/^www\./i, "")
+            .replace(/\/.*$/, "")
+            .trim() || undefined
+    }
+}
+
 function looksLikeHtml(value: string) {
     return /<\/?[a-z][\s\S]*>/i.test(value)
 }
 
 function stripHtml(value: string) {
-    return value
+    return repairMojibake(value
         .replace(/<script[\s\S]*?<\/script>/gi, " ")
         .replace(/<style[\s\S]*?<\/style>/gi, " ")
         .replace(/<[^>]+>/g, " ")
@@ -201,7 +296,28 @@ function stripHtml(value: string) {
         .replace(/&quot;/gi, "\"")
         .replace(/&#39;/g, "'")
         .replace(/\s+/g, " ")
-        .trim()
+        .trim()) ?? ""
+}
+
+function repairMojibake(value: string | undefined) {
+    if (!value) return undefined
+    if (!looksMojibaked(value)) return value
+
+    try {
+        const repaired = Buffer.from(value, "latin1").toString("utf8")
+        return mojibakeScore(repaired) < mojibakeScore(value) ? repaired : value
+    } catch {
+        return value
+    }
+}
+
+function looksMojibaked(value: string) {
+    return mojibakeScore(value) >= 2
+}
+
+function mojibakeScore(value: string) {
+    const matches = value.match(/Ã.|Â.|Æ.|áº|á»|Ä.|â€™|â€œ|â€|ðŸ/g)
+    return matches?.length ?? 0
 }
 
 function compactUnique(values: Array<string | undefined>) {

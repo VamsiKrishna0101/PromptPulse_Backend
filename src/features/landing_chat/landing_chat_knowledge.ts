@@ -20,7 +20,7 @@ Trial and plans:
 
 Credits:
 - One credit equals one successful prompt on one AI engine.
-- AI visibility reports use 25 credits, content briefs use 15, and Reddit intelligence starts at 25 credits.
+- AI visibility reports use 25 credits, AI SEO quick scans use 3 credits, full AI SEO audits use 15 credits, content briefs use 15, and Reddit intelligence starts at 25 credits.
 - Failed provider requests and retries are not charged. CSV/PDF exports are free.
 
 Contact and support:

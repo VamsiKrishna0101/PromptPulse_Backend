@@ -3,6 +3,12 @@ export type UiEngine = "chatgpt" | "gemini" | "perplexity" | "google_ai_overview
 export type UiCitation = {
     text: string
     url: string
+    domain?: string | null
+    snippet?: string | null
+    position?: number | null
+    answer_position?: number | null
+    is_cited?: boolean
+    source_kind?: "citation" | "search_source" | "search_source_more" | "attached_link" | "reference" | "source"
 }
 
 export type UiScrapeResult = {

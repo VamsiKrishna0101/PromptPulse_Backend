@@ -11,6 +11,12 @@ export type RunPromptInput = {
     citations?: {
         text: string
         url: string
+        domain?: string | null
+        snippet?: string | null
+        position?: number | null
+        answer_position?: number | null
+        is_cited?: boolean
+        source_kind?: string | null
     }[]
     enqueue_source_enrichment?: boolean
     ingest_chat?: boolean

@@ -137,7 +137,7 @@ export async function analyzeResponse(
     ai_model: string,
     brand_name: string,
     brand_url: string,
-    citations?: { url?: string | null; domain?: string | null; title?: string | null }[]
+    citations?: { url?: string | null; domain?: string | null; title?: string | null; text?: string | null; is_cited?: boolean | null; source_kind?: string | null }[]
 ): Promise<AnalysisResult & { ai_model: string }> {
     const systemPrompt = buildAnalysisSystemPrompt()
     // Truncate to keep the outgoing prompt + JSON response within token budget.
@@ -234,7 +234,7 @@ function normalizeAnalysisResult(
     rawResponse: string,
     brandName: string,
     brandUrl: string,
-    citations: { url?: string | null; domain?: string | null; title?: string | null }[] = []
+    citations: { url?: string | null; domain?: string | null; title?: string | null; text?: string | null; is_cited?: boolean | null; source_kind?: string | null }[] = []
 ): AnalysisResult {
     const brandMentioned = hasVisibleBrandMention(rawResponse, brandName, brandUrl)
     const normalizedBrandMentions = dedupeBrandMentions([
@@ -252,7 +252,7 @@ function normalizeAnalysisResult(
                 brandUrl,
                 normalizedBrandMentions.map(mention => mention.brand_name)
             ),
-            is_cited: true,
+            is_cited: citation.is_cited ?? (citation.source_kind === "citation" || citation.source_kind === "attached_link"),
         } satisfies AnalysisResult["sources"][number]))
 
     const explicitDomains = extractExplicitDomains(rawResponse)

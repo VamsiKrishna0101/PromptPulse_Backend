@@ -284,6 +284,7 @@ function buildAvailablePlansAnswer(context: Awaited<ReturnType<typeof buildCusto
         "",
         `You currently have **${context.usage.credits_remaining} credits remaining**. Starter includes 2,250 credits, Growth includes 5,000 credits with +500 bonus credits, and Pro includes 13,000 credits with +1,750 bonus credits.`,
         "",
+        "AI SEO quick scans use 3 credits, full AI SEO audits use 15 credits, AI visibility reports use 25 credits, content briefs use 15 credits, and Reddit intelligence starts at 25 credits.",
         "You can buy a monthly credit bundle or add PAYG top-ups anytime from Billing & Credits. Your trial credits are added after email verification.",
     ].join("\n")
 }

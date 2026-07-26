@@ -21,7 +21,7 @@ export const chatGptConfig: EngineConfig = {
 
         payload.web_search = process.env.BRIGHT_DATA_WEB_SEARCH !== "false"
         payload.require_sources = getBooleanEnv(
-            false,
+            true,
             "BRIGHT_DATA_CHATGPT_REQUIRE_SOURCES",
             "BRIGHT_DATA_REQUIRE_SOURCES"
         )

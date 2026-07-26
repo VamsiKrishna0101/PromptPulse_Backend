@@ -191,6 +191,7 @@ model User {
   action_queue_items ActionQueueItem[]
   weekly_email_reports WeeklyEmailReport[]
   reddit_intelligence_runs RedditIntelligenceRun[]
+  seo_audits SeoAudit[]
   reddit_posts RedditPost[]
   brand_preferences BrandPreference[]
   billing_invoices BillingInvoice[]
@@ -280,6 +281,7 @@ model AgencyClientLink {
   action_queue_items ActionQueueItem[]
   weekly_email_reports WeeklyEmailReport[]
   reddit_intelligence_runs RedditIntelligenceRun[]
+  seo_audits SeoAudit[]
     reddit_posts RedditPost[]
     brand_preference BrandPreference?
     engine_preferences ProjectEnginePreference[]
@@ -519,6 +521,122 @@ model Prompt {
   @@index([project_id, created_at])
 }
 
+model SeoAudit {
+  id                  String   @id @default(uuid())
+  project_id          String
+  project             Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  user_id             String
+  user                User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  url                 String
+  status              String   @default("COMPLETED")
+  overall_score       Int      @default(0)
+  technical_score     Int      @default(0)
+  ai_readiness_score  Int      @default(0)
+  local_score         Int      @default(0)
+  content_score       Int      @default(0)
+  schema_score        Int      @default(0)
+  credits_spent       Int      @default(0)
+  error_reason        String?
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  pages               SeoAuditPage[]
+  issues              SeoIssue[]
+  actions             SeoAction[]
+  rank_results        SeoRankResult[]
+
+  @@index([project_id, created_at])
+  @@index([user_id, created_at])
+}
+
+model SeoRankResult {
+  id                  String   @id @default(uuid())
+  project_id          String
+  audit_id            String
+  audit               SeoAudit @relation(fields: [audit_id], references: [id], onDelete: Cascade)
+  keyword             String
+  country             String
+  language            String
+  target_domain       String
+  google_rank         Int?
+  ranking_url         String?
+  ranking_title       String?
+  organic_results     Json     @default("[]")
+  related_queries     Json     @default("[]")
+  status              String   @default("COMPLETED")
+  error_reason        String?
+  created_at          DateTime @default(now())
+
+  @@unique([audit_id, keyword])
+  @@index([project_id, created_at])
+  @@index([audit_id])
+}
+
+model SeoAuditPage {
+  id                  String   @id @default(uuid())
+  audit_id            String
+  audit               SeoAudit @relation(fields: [audit_id], references: [id], onDelete: Cascade)
+  url                 String
+  status_code         Int?
+  title               String?
+  meta_description    String?
+  h1                  String?
+  canonical           String?
+  word_count          Int      @default(0)
+  indexable           Boolean  @default(true)
+  has_viewport        Boolean  @default(false)
+  has_schema          Boolean  @default(false)
+  has_faq             Boolean  @default(false)
+  detected_services   Json     @default("[]")
+  detected_locations  Json     @default("[]")
+  page_type           String   @default("OTHER")
+  created_at          DateTime @default(now())
+
+  issues              SeoIssue[]
+
+  @@index([audit_id])
+  @@index([url])
+}
+
+model SeoIssue {
+  id              String        @id @default(uuid())
+  audit_id        String
+  audit           SeoAudit      @relation(fields: [audit_id], references: [id], onDelete: Cascade)
+  page_id         String?
+  page            SeoAuditPage? @relation(fields: [page_id], references: [id], onDelete: SetNull)
+  category        String
+  severity        String
+  title           String
+  description     String
+  recommendation  String
+  priority_score  Int           @default(50)
+  created_at      DateTime      @default(now())
+
+  @@index([audit_id, category])
+  @@index([audit_id, severity])
+}
+
+model SeoAction {
+  id                  String   @id @default(uuid())
+  project_id          String
+  audit_id            String
+  audit               SeoAudit @relation(fields: [audit_id], references: [id], onDelete: Cascade)
+  action_type         String
+  title               String
+  description         String
+  page_url            String?
+  priority            String
+  difficulty          String
+  related_prompt_ids  String[] @default([])
+  related_sources     String[] @default([])
+  status              String   @default("OPEN")
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  @@index([project_id, status])
+  @@index([audit_id])
+}
+
 model GeoPromptVariant {
   id           String   @id @default(uuid())
   prompt_id    String
@@ -704,6 +822,9 @@ model Source {
   used_by_ai            Boolean           @default(true)
   title                 String?
   snippet               String?
+  source_kind           String?
+  source_position       Int?
+  answer_position       Int?
   platform              String?
   subreddit             String?
   mentioned_brands      Json?
@@ -712,6 +833,7 @@ model Source {
 
   @@index([chat_id, domain])
   @@index([chat_id, is_cited])
+  @@index([chat_id, source_position])
   @@index([chat_id, created_at])
   @@index([domain, created_at])
   @@index([source_url_content_id])

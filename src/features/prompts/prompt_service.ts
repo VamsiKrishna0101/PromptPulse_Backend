@@ -1,4 +1,5 @@
 import prisma from '../../lib/prisma'
+import { getObservedPromptDemand } from './prompt_demand_service'
 export { GEO_COUNTRIES, getGeoCountryByName } from '../geo/countries'
 
 // ─── Geo: supported countries (top GEO markets) ───────────────────────────────
@@ -75,6 +76,7 @@ export async function getPromptsWithStats(input: GetPromptsInput) {
         },
         orderBy: { created_at: 'desc' }
     })
+    const observedDemand = await getObservedPromptDemand(prompts.map(prompt => prompt.id))
 
     return prompts.map(prompt => {
         const chats = prompt.chats
@@ -120,6 +122,10 @@ export async function getPromptsWithStats(input: GetPromptsInput) {
             source: prompt.source,
             priority_score: prompt.priority_score,
             volume_score: prompt.volume_score,
+            observed_demand_score: observedDemand.get(prompt.id)?.score ?? null,
+            observed_demand_label: observedDemand.get(prompt.id)?.label ?? "NOT_ENOUGH_DATA",
+            observed_runs_30d: observedDemand.get(prompt.id)?.runs_30d ?? 0,
+            observed_demand_basis: "PromptPulse AI runs in the last 30 days",
             last_run_at: prompt.last_run_at,
             created_at: prompt.created_at,
             // stats

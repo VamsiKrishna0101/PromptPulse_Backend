@@ -59,12 +59,17 @@ export function buildAnalysisUserPrompt(
   raw_response: string,
   brand_name: string,
   brand_url: string,
-  citations?: { url?: string | null; domain?: string | null; title?: string | null }[]
+  citations?: { url?: string | null; domain?: string | null; title?: string | null; text?: string | null; is_cited?: boolean | null; source_kind?: string | null }[]
 ): string {
   const citationBlock = citations && citations.length > 0
-    ? `\nPage Citations (URLs extracted from the page - these are sources the AI used):\n${citations
+    ? `\nBrightData Sources (URLs extracted from the AI result page):\n${citations
         .filter(c => c.url)
-        .map((c, i) => `${i + 1}. ${c.url}${c.domain ? ` (${c.domain})` : ""}${c.title ? ` - ${c.title}` : ""}`)
+        .map((c, i) => {
+          const cited = c.is_cited ?? (c.source_kind === "citation" || c.source_kind === "attached_link")
+          const label = cited ? "cited" : "search-only"
+          const title = c.title || c.text
+          return `${i + 1}. [${label}] ${c.url}${c.domain ? ` (${c.domain})` : ""}${title ? ` - ${title}` : ""}`
+        })
         .join("\n")}\n`
     : ""
 
@@ -82,7 +87,7 @@ Instructions:
 - Check if "${brand_name}" is mentioned anywhere in the response.
 - For each brand mention, include its likely official domain in brand_mentions[].domain when confidently known; otherwise null.
 - Find every other brand, company, or product name mentioned in the response.
-- Extract all URLs and domains referenced or cited. If Page Citations are provided above, include all of them in sources[] exactly as provided.
+- Extract all URLs and domains referenced or cited. If BrightData Sources are provided above, include all of them in sources[] exactly as provided and preserve cited vs search-only status.
 - Do not add competitor official domains to sources[] unless they appear in Page Citations or are explicitly written in the raw response.
 - Do not infer or hallucinate source URLs from brand names. Brand official domains belong in brand_mentions[].domain, not sources[].
 - If the response mentions a subreddit or Quora topic, add reddit.com or quora.com to sources[] with source_type "UGC" and is_cited: true.

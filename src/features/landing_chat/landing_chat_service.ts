@@ -63,7 +63,7 @@ function answerForIntent(intent: LandingChatIntent): LandingChatResponse {
     if (intent === "credits") {
         return {
             intent,
-            answer: "One credit covers one successful prompt on one AI engine. AI visibility reports use 25 credits, content briefs use 15, and Reddit intelligence starts at 25. Failed provider requests and retries are not charged; agencies can top up a shared wallet from 1,000 credits.",
+            answer: "One credit covers one successful prompt on one AI engine. AI visibility reports use 25 credits, AI SEO quick scans use 3 credits, full AI SEO audits use 15 credits, content briefs use 15, and Reddit intelligence starts at 25. Failed provider requests and retries are not charged; agencies can top up a shared wallet from 1,000 credits.",
             suggestions: ["Do exports use credits?", "Which plan has more credits?", "Can agencies share credits?"],
             cta: { label: "View plans", href: "/pricing" },
         }
