@@ -131,5 +131,28 @@ export function isEligibleCompetitorEntity(input: {
 export function sameBrandEntity(left: string, right: string): boolean {
     const leftName = sanitizeDiscoveredBrandName(left)
     const rightName = sanitizeDiscoveredBrandName(right)
-    return Boolean(leftName && rightName && normalizeBrandEntityKey(leftName) === normalizeBrandEntityKey(rightName))
+    if (!leftName || !rightName) return false
+    if (normalizeBrandEntityKey(leftName) === normalizeBrandEntityKey(rightName)) return true
+
+    const comparable = (value: string) => value
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .split(/\s+/)
+        .filter(Boolean)
+        .filter(token => ![
+            "hospital", "hospitals", "health", "healthcare", "clinic", "clinics",
+            "medical", "centre", "center", "group", "limited", "ltd", "private", "pvt",
+            "speciality", "specialty", "superspeciality", "superspecialty", "multispeciality",
+            "multispecialty", "multi", "super",
+        ].includes(token))
+        .join("")
+
+    const leftComparable = comparable(leftName)
+    const rightComparable = comparable(rightName)
+    if (!leftComparable || !rightComparable) return false
+    if (leftComparable === rightComparable) return true
+
+    const shorter = leftComparable.length <= rightComparable.length ? leftComparable : rightComparable
+    const longer = shorter === leftComparable ? rightComparable : leftComparable
+    return shorter.length >= 6 && longer.startsWith(shorter)
 }

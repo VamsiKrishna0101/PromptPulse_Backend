@@ -1,6 +1,10 @@
 import prisma from "../../lib/prisma"
 import { buildChatWhere, type DashboardFilters } from "../dashboard/dashboard_service"
 import type { ContentGapPlan, OpportunityBucket, OpportunityConfidence, OpportunityEffort, OpportunityImpact, OpportunityItem, OpportunitySource, OpportunityType, OpportunitiesResponse, SourceActionability } from "./opportunity_types"
+import { classifyBuyerIntent } from "./buyer_intent"
+import { outcomeExplanation, recommendationOutcome } from "./opportunity_outcome"
+import { selectOpportunityTargetPage } from "./opportunity_targeting"
+import { isEligibleCompetitorEntity, sameBrandEntity, sanitizeDiscoveredBrandName } from "../brands/brand_entity_policy"
 
 type ChatWithEvidence = Awaited<ReturnType<typeof loadOpportunityChats>>[number]
 
@@ -58,7 +62,7 @@ function isNoisySearchResult(rawResponse: string | null) {
 }
 
 function hasCompetitorMention(chat: ChatWithEvidence, competitorName: string) {
-    return chat.brand_mentions.some(mention => mention.brand_name.toLowerCase() === competitorName.toLowerCase())
+    return chat.brand_mentions.some(mention => sameBrandEntity(mention.brand_name, competitorName))
 }
 
 function promptIntentWarning(promptText: string) {
@@ -388,17 +392,20 @@ async function loadOpportunityChats(project_id: string, filters: DashboardFilter
                     id: true,
                     text: true,
                     topic: true,
+                    type: true,
                 }
             },
             brand_mentions: {
                 select: {
                     brand_name: true,
+                    domain: true,
                     position: true,
                     sentiment_score: true,
                 }
             },
             sources: {
                 select: {
+                    url: true,
                     domain: true,
                     title: true,
                     source_type: true,
@@ -462,6 +469,7 @@ function sourceEvidence(chats: ChatWithEvidence[], competitorName: string, brand
             const rank = source.answer_position ?? source.source_position ?? null
             domainMap.set(source.domain, {
                 domain: source.domain,
+                url: existing?.url ?? source.url ?? null,
                 title: existing?.title ?? source.title ?? null,
                 source_type: existing?.source_type ?? source.source_type ?? classified.pattern,
                 mentions: (existing?.mentions ?? 0) + 1,
@@ -479,6 +487,7 @@ function sourceEvidence(chats: ChatWithEvidence[], competitorName: string, brand
     return Array.from(domainMap.values())
         .map(source => ({
             domain: source.domain,
+            url: source.url,
             title: source.title,
             source_type: source.source_type,
             mentions: source.mentions,
@@ -511,6 +520,14 @@ function buildOpportunity(input: {
     ownSentiment: number | null
     competitorSentiment: number | null
     totalChats: number
+    brandUrl: string
+    sitePages: Array<{
+        url: string
+        title: string | null
+        h1: string | null
+        detected_services: unknown
+        detected_locations: unknown
+    }>
 }): OpportunityItem {
     const sources = sourceEvidence(input.promptChats, input.competitorName, input.brandName, true)
     const cleanChats = cleanCompetitorChats(input.promptChats, input.competitorName)
@@ -544,6 +561,43 @@ function buildOpportunity(input: {
     const sample = input.promptChats.find(chat =>
         hasCompetitorMention(chat, input.competitorName)
     )?.raw_response
+    const buyerIntent = classifyBuyerIntent(input.prompt.text, input.prompt.type)
+    const brandOutcome = recommendationOutcome({
+        visibility: input.ownVisibility,
+        position: input.ownPosition,
+        sentiment: input.ownSentiment,
+    })
+    const competitorOutcome = recommendationOutcome({
+        visibility: input.competitorVisibility,
+        position: input.competitorPosition,
+        sentiment: input.competitorSentiment,
+    })
+    const contentGap = buildContentGapPlan({
+        type: input.type,
+        promptText: input.prompt.text,
+        brandName: input.brandName,
+        competitorName: input.competitorName,
+        ownVisibility: input.ownVisibility,
+        competitorVisibility: input.competitorVisibility,
+        sources,
+        impactScore,
+        confidence: confidenceResult.confidence,
+        confidenceReasons: confidenceResult.reasons,
+        cleanEvidenceCount: cleanChats.length,
+        promptWarning,
+    })
+    const targetPage = selectOpportunityTargetPage({
+        promptText: input.prompt.text,
+        topic: input.prompt.topic,
+        action: contentGap.action,
+        brandUrl: input.brandUrl,
+        pages: input.sitePages,
+    })
+    if (targetPage.status === "EXISTING_PAGE" && contentGap.action === "CREATE") {
+        contentGap.action = "OPTIMIZE"
+        contentGap.priority_reason = `${contentGap.priority_reason} A relevant owned page already exists, so optimize that page instead of creating a duplicate.`
+    }
+    const supportingUrls = [...new Set(sources.map(source => source.url).filter((url): url is string => Boolean(url)))].slice(0, 5)
 
     return {
         id: `${input.prompt.id}-${input.competitorName}-${input.type}`.toLowerCase().replace(/[^a-z0-9-]/g, "-"),
@@ -553,7 +607,11 @@ function buildOpportunity(input: {
         prompt_id: input.prompt.id,
         prompt_text: input.prompt.text,
         topic: input.prompt.topic,
+        buyer_intent: buyerIntent,
         competitor_name: input.competitorName,
+        brand_outcome: brandOutcome,
+        competitor_outcome: competitorOutcome,
+        outcome_explanation: outcomeExplanation(brandOutcome),
         own_visibility: rounded(input.ownVisibility),
         competitor_visibility: rounded(input.competitorVisibility),
         own_position: input.ownPosition ? rounded(input.ownPosition) : null,
@@ -572,20 +630,23 @@ function buildOpportunity(input: {
         actionability,
         source_pattern: sourcePattern(sources),
         top_sources: sources,
-        content_gap: buildContentGapPlan({
-            type: input.type,
-            promptText: input.prompt.text,
-            brandName: input.brandName,
-            competitorName: input.competitorName,
-            ownVisibility: input.ownVisibility,
-            competitorVisibility: input.competitorVisibility,
-            sources,
-            impactScore,
-            confidence: confidenceResult.confidence,
-            confidenceReasons: confidenceResult.reasons,
-            cleanEvidenceCount: cleanChats.length,
-            promptWarning,
-        }),
+        content_gap: contentGap,
+        target_page: targetPage,
+        supporting_urls: supportingUrls,
+        business_reason: buyerIntent.value === "HIGH"
+            ? `This ${buyerIntent.label.toLowerCase()} prompt can influence a near-term buyer decision. ${input.competitorName} currently has the stronger AI outcome.`
+            : `This prompt shapes ${buyerIntent.stage.toLowerCase()} visibility and can influence which brands enter the buyer's shortlist.`,
+        verification: {
+            baseline: {
+                visibility: rounded(input.ownVisibility),
+                position: input.ownPosition ? rounded(input.ownPosition) : null,
+                outcome: brandOutcome,
+            },
+            success_metric: brandOutcome === "ABSENT"
+                ? "Move from absent to listed or recommended in the tracked AI answers."
+                : `Improve visibility above ${rounded(input.ownVisibility)}% or average position above ${input.ownPosition ? `#${rounded(input.ownPosition)}` : "the current baseline"}.`,
+            recheck_after_days: contentGap.action === "CREATE" ? 14 : 7,
+        },
         next_step: nextStep({
             type: input.type,
             competitor: input.competitorName,
@@ -602,7 +663,24 @@ export async function getOpportunities(project_id: string, filters: DashboardFil
     const [project, chats] = await Promise.all([
         prisma.project.findUniqueOrThrow({
             where: { id: project_id },
-            include: { competitors: { select: { name: true } } }
+            include: {
+                competitors: { select: { name: true } },
+                seo_audits: {
+                    take: 1,
+                    orderBy: { created_at: "desc" },
+                    select: {
+                        pages: {
+                            select: {
+                                url: true,
+                                title: true,
+                                h1: true,
+                                detected_services: true,
+                                detected_locations: true,
+                            },
+                        },
+                    },
+                },
+            }
         }),
         loadOpportunityChats(project_id, filters)
     ])
@@ -614,7 +692,7 @@ export async function getOpportunities(project_id: string, filters: DashboardFil
         }
     }
 
-    const trackedCompetitors = new Set(project.competitors.map(competitor => competitor.name.toLowerCase()))
+    const trackedCompetitors = project.competitors.map(competitor => competitor.name)
     const promptMap = new Map<string, ChatWithEvidence[]>()
     for (const chat of chats) {
         const rows = promptMap.get(chat.prompt.id) ?? []
@@ -636,17 +714,26 @@ export async function getOpportunities(project_id: string, filters: DashboardFil
         for (const chat of promptChats) {
             const seenInChat = new Set<string>()
             for (const mention of chat.brand_mentions) {
-                const name = mention.brand_name.trim()
-                if (!name || name.toLowerCase() === project.brand_name.toLowerCase()) continue
-                if (trackedCompetitors.size && !trackedCompetitors.has(name.toLowerCase())) continue
-                if (seenInChat.has(name.toLowerCase())) continue
-                seenInChat.add(name.toLowerCase())
+                const name = sanitizeDiscoveredBrandName(mention.brand_name)
+                if (!name || !isEligibleCompetitorEntity({
+                    name,
+                    domain: mention.domain,
+                    ownBrandName: project.brand_name,
+                    ownBrandUrl: project.brand_url,
+                })) continue
 
-                const current = competitorMap.get(name) ?? { count: 0, positions: [], sentiments: [] }
+                const trackedName = trackedCompetitors.find(competitor => sameBrandEntity(name, competitor))
+                if (trackedCompetitors.length && !trackedName) continue
+                const canonicalName = trackedName ?? name
+                const canonicalKey = canonicalName.toLowerCase()
+                if (seenInChat.has(canonicalKey)) continue
+                seenInChat.add(canonicalKey)
+
+                const current = competitorMap.get(canonicalName) ?? { count: 0, positions: [], sentiments: [] }
                 current.count += 1
                 if (mention.position !== null) current.positions.push(mention.position)
                 if (mention.sentiment_score !== null) current.sentiments.push(mention.sentiment_score)
-                competitorMap.set(name, current)
+                competitorMap.set(canonicalName, current)
             }
         }
 
@@ -681,6 +768,8 @@ export async function getOpportunities(project_id: string, filters: DashboardFil
                 ownSentiment,
                 competitorSentiment,
                 totalChats: total,
+                brandUrl: project.brand_url,
+                sitePages: project.seo_audits[0]?.pages ?? [],
             }))
         }
     }

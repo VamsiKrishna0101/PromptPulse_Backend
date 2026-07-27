@@ -3,6 +3,7 @@ import type { AuthenticatedRequest } from "../../middleware/auth"
 import { assertProjectAccess } from "../projects/project_access"
 import { getOpportunities } from "./opportunity_service"
 import type { DashboardFilters } from "../dashboard/dashboard_service"
+import { createOpportunityAction } from "./opportunity_action_service"
 
 function parseFilters(query: Request["query"]): DashboardFilters {
     const filters: DashboardFilters = {}
@@ -36,5 +37,38 @@ export async function getOpportunitiesController(req: Request, res: Response): P
             return
         }
         res.status(500).json({ error: "Failed to get opportunities" })
+    }
+}
+
+export async function createOpportunityActionController(req: Request, res: Response): Promise<void> {
+    try {
+        const { project_id, opportunity_id } = req.params
+        if (!project_id || Array.isArray(project_id) || !opportunity_id || Array.isArray(opportunity_id)) {
+            res.status(400).json({ error: "project_id and opportunity_id are required" })
+            return
+        }
+
+        const userId = (req as AuthenticatedRequest).user.id
+        await assertProjectAccess(project_id, userId)
+        const data = await getOpportunities(project_id, parseFilters(req.query))
+        const item = data.opportunities.find(opportunity => opportunity.id === opportunity_id)
+        if (!item) {
+            res.status(404).json({ error: "Opportunity not found in the current project evidence" })
+            return
+        }
+
+        const action = await createOpportunityAction({
+            projectId: project_id,
+            userId,
+            item,
+        })
+        res.status(201).json(action)
+    } catch (error) {
+        if (error instanceof Error && error.message === "PROJECT_NOT_FOUND") {
+            res.status(404).json({ error: "Project not found" })
+            return
+        }
+        console.error("[opportunities] Failed to create action:", error)
+        res.status(500).json({ error: "Failed to create opportunity action" })
     }
 }
