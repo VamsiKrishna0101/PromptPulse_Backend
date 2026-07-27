@@ -2,7 +2,7 @@ import prisma from "../../lib/prisma"
 import type { AddCompetitorInput } from "./brand_types"
 import { buildChatWhere, type DashboardFilters } from "../dashboard/dashboard_service"
 import { assertCanAddCompetitor } from "../subscription/subscription_service"
-import { sameBrandEntity, sanitizeDiscoveredBrandName } from "./brand_entity_policy"
+import { isEligibleCompetitorEntity, normalizeEntityDomain, sameBrandEntity, sanitizeDiscoveredBrandName } from "./brand_entity_policy"
 
 type ChatWithMentions = Awaited<ReturnType<typeof loadBrandChats>>[number]
 
@@ -52,21 +52,28 @@ async function loadPreviousBrandChats(project_id: string, filters?: DashboardFil
     return splitAllTimeChats(currentChats).previous
 }
 
-function aggregateBrandMap(chats: ChatWithMentions[]) {
+function aggregateBrandMap(chats: ChatWithMentions[], ownBrand: { name: string; url: string }) {
     const totalChats = chats.length
-    const brandMap = new Map<string, { name: string, count: number, totalPosition: number, totalSentiment: number, sentimentCount: number }>()
+    const brandMap = new Map<string, { name: string, domain: string | null, count: number, totalPosition: number, totalSentiment: number, sentimentCount: number }>()
 
     for (const chat of chats) {
         const seenInChat = new Set<string>()
         for (const mention of chat.brand_mentions) {
             const name = sanitizeDiscoveredBrandName(mention.brand_name)
             if (!name) continue
+            if (!isEligibleCompetitorEntity({
+                name,
+                domain: mention.domain,
+                ownBrandName: ownBrand.name,
+                ownBrandUrl: ownBrand.url,
+            })) continue
             const key = name.toLowerCase()
             if (seenInChat.has(key)) continue
             seenInChat.add(key)
-            const existing = brandMap.get(key) || { name, count: 0, totalPosition: 0, totalSentiment: 0, sentimentCount: 0 }
+            const existing = brandMap.get(key) || { name, domain: null, count: 0, totalPosition: 0, totalSentiment: 0, sentimentCount: 0 }
             brandMap.set(key, {
                 name: existing.name,
+                domain: existing.domain ?? normalizeEntityDomain(mention.domain),
                 count: existing.count + 1,
                 totalPosition: existing.totalPosition + (mention.position ?? 0),
                 totalSentiment: existing.totalSentiment + (mention.sentiment_score ?? 0),
@@ -117,16 +124,23 @@ function attachDeltas<T extends { visibility: number; avg_position: number | nul
 }
 
 export async function getDiscoveredBrands(project_id: string, filters?: DashboardFilters) {
-    const chats = await loadBrandChats(project_id, filters)
+    const [chats, project] = await Promise.all([
+        loadBrandChats(project_id, filters),
+        prisma.project.findUniqueOrThrow({
+            where: { id: project_id },
+            select: { brand_name: true, brand_url: true },
+        }),
+    ])
 
     const totalChats = chats.length
     if (totalChats === 0) return []
 
-    const { brandMap } = aggregateBrandMap(chats)
+    const { brandMap } = aggregateBrandMap(chats, { name: project.brand_name, url: project.brand_url })
     const previousChats = await loadPreviousBrandChats(project_id, filters, chats)
 
     return Array.from(brandMap.values()).map(data => ({
         brand_name: data.name,
+        domain: data.domain,
         visibility: (data.count / totalChats) * 100,
         avg_position: data.count > 0 ? data.totalPosition / data.count : null,
         avg_sentiment: data.sentimentCount > 0 ? data.totalSentiment / data.sentimentCount : null,

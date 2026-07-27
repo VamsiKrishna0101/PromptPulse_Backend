@@ -31,6 +31,52 @@ const CANONICAL_BRANDS = new Map<string, string>([
     ["scrunchai", "Scrunch AI"],
 ])
 
+const NON_COMPETITOR_ENTITY_KEYS = new Set([
+    "justdial",
+    "practo",
+    "sulekha",
+    "indiamart",
+    "yelp",
+    "tripadvisor",
+    "trustpilot",
+    "glassdoor",
+    "g2",
+    "capterra",
+    "clutch",
+    "goodfirms",
+    "wikipedia",
+    "reddit",
+    "linkedin",
+    "youtube",
+    "amazon",
+    "flipkart",
+    "timesofindia",
+    "thetimesofindia",
+])
+
+const NON_COMPETITOR_DOMAINS = new Set([
+    "justdial.com",
+    "practo.com",
+    "sulekha.com",
+    "indiamart.com",
+    "yelp.com",
+    "tripadvisor.com",
+    "trustpilot.com",
+    "glassdoor.com",
+    "g2.com",
+    "capterra.com",
+    "clutch.co",
+    "goodfirms.co",
+    "wikipedia.org",
+    "reddit.com",
+    "linkedin.com",
+    "youtube.com",
+    "amazon.com",
+    "amazon.in",
+    "flipkart.com",
+    "timesofindia.indiatimes.com",
+])
+
 export function normalizeBrandEntityKey(value: string): string {
     return value.toLowerCase().replace(/[^a-z0-9]/g, "")
 }
@@ -51,6 +97,35 @@ export function sanitizeDiscoveredBrandName(value: string | null | undefined): s
     if (!key || EXCLUDED_AI_SURFACES.has(key)) return null
 
     return CANONICAL_BRANDS.get(key) ?? cleaned
+}
+
+export function normalizeEntityDomain(value: string | null | undefined): string | null {
+    if (!value) return null
+    try {
+        const hostname = new URL(value.includes("://") ? value : `https://${value}`).hostname
+        return hostname.toLowerCase().replace(/^www\./, "")
+    } catch {
+        return value.toLowerCase().replace(/^www\./, "").split("/")[0] || null
+    }
+}
+
+export function isEligibleCompetitorEntity(input: {
+    name: string | null | undefined
+    domain?: string | null
+    ownBrandName?: string | null
+    ownBrandUrl?: string | null
+}) {
+    const name = sanitizeDiscoveredBrandName(input.name)
+    if (!name) return false
+    if (input.ownBrandName && sameBrandEntity(name, input.ownBrandName)) return false
+
+    const key = normalizeBrandEntityKey(name)
+    const domain = normalizeEntityDomain(input.domain)
+    const ownDomain = normalizeEntityDomain(input.ownBrandUrl)
+    if (NON_COMPETITOR_ENTITY_KEYS.has(key)) return false
+    if (domain && NON_COMPETITOR_DOMAINS.has(domain)) return false
+    if (domain && ownDomain && domain === ownDomain) return false
+    return true
 }
 
 export function sameBrandEntity(left: string, right: string): boolean {

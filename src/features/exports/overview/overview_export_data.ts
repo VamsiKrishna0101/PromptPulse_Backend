@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client"
 import prisma from "../../../lib/prisma"
 import { getOpportunities } from "../../opportunities/opportunity_service"
 import type { DashboardFilters } from "../../dashboard/dashboard_service"
+import { isEligibleCompetitorEntity } from "../../brands/brand_entity_policy"
 import type { ExportFilters } from "../export_types"
 import {
     average,
@@ -67,7 +68,7 @@ function ownStats(chats: ReportChat[]) {
     }
 }
 
-function toBrandList(chats: ReportChat[], ownBrand: string): OverviewBrandRow[] {
+function toBrandList(chats: ReportChat[], ownBrand: string, ownBrandUrl: string): OverviewBrandRow[] {
     const total = chats.length
     const ownKey = canonicalBrandKey(ownBrand)
     const map = new Map<string, {
@@ -99,6 +100,12 @@ function toBrandList(chats: ReportChat[], ownBrand: string): OverviewBrandRow[] 
         }
         for (const mention of chat.brand_mentions) {
             const isOwn = canonicalBrandKey(mention.brand_name) === ownKey
+            if (!isOwn && !isEligibleCompetitorEntity({
+                name: mention.brand_name,
+                domain: mention.domain,
+                ownBrandName: ownBrand,
+                ownBrandUrl,
+            })) continue
             const item = ensure(mention.brand_name, isOwn)
             item.chats.add(chat.id)
             if (mention.position !== null) item.positions.push(mention.position)
@@ -325,7 +332,7 @@ export async function getOverviewExportModel(projectId: string, filters: ExportF
     const engines = toEngineList(chats)
     const prompts = toPromptList(chats)
     const topics = toTopicList(chats)
-    const brands = toBrandList(chats, project.brand_name)
+    const brands = toBrandList(chats, project.brand_name, project.brand_url)
     const sources = toSourceList(chats, project.brand_name)
     const sourceTypes = toSourceTypes(sources)
     const sentiment = toSentiment(chats)
