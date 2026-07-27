@@ -3,6 +3,7 @@ import type { AuthenticatedRequest } from "../../middleware/auth"
 import { assertProjectAccess } from "../projects/project_access"
 import { canExport } from "../subscription/subscription_service"
 import { createExcelExport, createPdfExport, createGeoArticlePdf } from "./export_service"
+import { getOverviewExportModel } from "./overview/overview_export_data"
 import type { ExportFilters, ExportResource } from "./export_types"
 
 const EXPORT_RESOURCES = new Set<ExportResource>([
@@ -28,6 +29,15 @@ export async function downloadCsvExportController(req: Request, res: Response): 
 
         await assertProjectAccess(project_id, userId)
         // PAYG: exports always allowed — credits deducted by credit service
+
+        if (format === "json") {
+            if (resource !== "overview") {
+                res.status(400).json({ error: "Structured presentation data is only available for overview exports" })
+                return
+            }
+            res.status(200).json(await getOverviewExportModel(project_id, filters))
+            return
+        }
 
         if (format === "pdf") {
             const result = await createPdfExport({ project_id, resource, filters })
@@ -103,7 +113,7 @@ function getResource(req: Request, res: Response): ExportResource | null {
         return null
     }
 
-    const rawResource = resourceParam.replace(/\.(csv|pdf|xlsx)$/i, "")
+    const rawResource = resourceParam.replace(/\.(csv|pdf|xlsx|json)$/i, "")
     if (!rawResource || !EXPORT_RESOURCES.has(rawResource as ExportResource)) {
         res.status(400).json({ error: "Unsupported export resource" })
         return null
@@ -111,11 +121,12 @@ function getResource(req: Request, res: Response): ExportResource | null {
     return rawResource as ExportResource
 }
 
-function getFormat(req: Request): "csv" | "pdf" | "xlsx" {
+function getFormat(req: Request): "csv" | "pdf" | "xlsx" | "json" {
     const resourceParam = Array.isArray(req.params.resource) ? "" : req.params.resource
     const ext = resourceParam?.split(".").pop()?.toLowerCase()
     if (ext === "pdf") return "pdf"
     if (ext === "xlsx") return "xlsx"
+    if (ext === "json") return "json"
     return "csv"
 }
 

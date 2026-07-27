@@ -3,6 +3,9 @@ import ExcelJS from "exceljs"
 import PDFDocument from "pdfkit"
 import prisma from "../../lib/prisma"
 import type { CsvExport, ExcelExport, ExportFilters, ExportResource, PdfExport } from "./export_types"
+import { buildOverviewPdf } from "./overview/overview_export_pdf"
+import { buildOverviewExcel } from "./overview/overview_export_excel"
+import { getOverviewExportModel } from "./overview/overview_export_data"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -143,10 +146,12 @@ export async function createExcelExport(input: {
     filters: ExportFilters
 }): Promise<ExcelExport> {
     const project = await prisma.project.findUniqueOrThrow({
-        where: { id: input.project_id }, select: { brand_name: true },
+        where: { id: input.project_id }, select: { brand_name: true, brand_url: true },
     })
-    const rows = await getRows(input.project_id, input.resource, input.filters)
-    const content = await buildExcel(project.brand_name, input.resource, input.filters, rows)
+    const rows = input.resource === "overview" ? [] : await getRows(input.project_id, input.resource, input.filters)
+    const content = input.resource === "overview"
+        ? await buildOverviewExcel(await getOverviewExportModel(input.project_id, input.filters))
+        : await buildExcel(project.brand_name, input.resource, input.filters, rows)
     const filename = buildFilename(project.brand_name, input.resource, "xlsx")
     return { filename, content }
 }
@@ -157,10 +162,12 @@ export async function createPdfExport(input: {
     filters: ExportFilters
 }): Promise<PdfExport> {
     const project = await prisma.project.findUniqueOrThrow({
-        where: { id: input.project_id }, select: { brand_name: true },
+        where: { id: input.project_id }, select: { brand_name: true, brand_url: true },
     })
-    const rows = await getRows(input.project_id, input.resource, input.filters)
-    const content = await buildPdf(project.brand_name, input.resource, input.filters, rows)
+    const rows = input.resource === "overview" ? [] : await getRows(input.project_id, input.resource, input.filters)
+    const content = input.resource === "overview"
+        ? await buildOverviewPdf(await getOverviewExportModel(input.project_id, input.filters))
+        : await buildPdf(project.brand_name, input.resource, input.filters, rows)
     const filename = buildFilename(project.brand_name, input.resource, "pdf")
     return { filename, content }
 }

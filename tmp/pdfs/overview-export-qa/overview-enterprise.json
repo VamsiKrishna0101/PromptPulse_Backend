@@ -1,0 +1,1040 @@
+{
+  "brandName": "Vikas Hospitals",
+  "brandUrl": "https://vikashospitals.com",
+  "generatedAt": "2026-07-26T12:00:00.000Z",
+  "filters": {
+    "days": 30
+  },
+  "periodLabel": "Last 30 days",
+  "comparisonLabel": "Previous 30 days",
+  "metrics": [
+    {
+      "label": "AI responses",
+      "value": 540,
+      "previous": 485,
+      "delta": 55,
+      "description": "Successful analyzed responses",
+      "format": "number"
+    },
+    {
+      "label": "Brand visibility",
+      "value": 71.9,
+      "previous": 66.4,
+      "delta": 5.5,
+      "description": "Responses mentioning the brand",
+      "format": "percent"
+    },
+    {
+      "label": "Average position",
+      "value": 3.1,
+      "previous": 3.8,
+      "delta": -0.7,
+      "description": "Rank when the brand appears",
+      "format": "position",
+      "lowerIsBetter": true
+    },
+    {
+      "label": "Sentiment score",
+      "value": 78.2,
+      "previous": 74.5,
+      "delta": 3.7,
+      "description": "Average measured brand sentiment",
+      "format": "score"
+    },
+    {
+      "label": "Source domains",
+      "value": 326,
+      "previous": 281,
+      "delta": 45,
+      "description": "Distinct domains in answers",
+      "format": "number"
+    }
+  ],
+  "trend": [
+    {
+      "date": "2026-07-01",
+      "visibility": 57,
+      "responses": 27
+    },
+    {
+      "date": "2026-07-02",
+      "visibility": 62.79882590884738,
+      "responses": 27
+    },
+    {
+      "date": "2026-07-03",
+      "visibility": 63.955784560954086,
+      "responses": 27
+    },
+    {
+      "date": "2026-07-04",
+      "visibility": 60.0967200483592,
+      "responses": 27
+    },
+    {
+      "date": "2026-07-05",
+      "visibility": 55.45918502815243,
+      "responses": 27
+    },
+    {
+      "date": "2026-07-06",
+      "visibility": 54.99645435202117,
+      "responses": 27
+    },
+    {
+      "date": "2026-07-07",
+      "visibility": 59.823507010806445,
+      "responses": 27
+    },
+    {
+      "date": "2026-07-08",
+      "visibility": 66.19191959231273,
+      "responses": 27
+    },
+    {
+      "date": "2026-07-09",
+      "visibility": 68.9361494797403,
+      "responses": 27
+    },
+    {
+      "date": "2026-07-10",
+      "visibility": 66.22271091145053,
+      "responses": 27
+    },
+    {
+      "date": "2026-07-11",
+      "visibility": 61.23587333466378,
+      "responses": 27
+    },
+    {
+      "date": "2026-07-12",
+      "visibility": 59.25005876069578,
+      "responses": 27
+    },
+    {
+      "date": "2026-07-13",
+      "visibility": 62.78056249199739,
+      "responses": 27
+    },
+    {
+      "date": "2026-07-14",
+      "visibility": 69.27100222095984,
+      "responses": 27
+    },
+    {
+      "date": "2026-07-15",
+      "visibility": 73.44364413416922,
+      "responses": 27
+    },
+    {
+      "date": "2026-07-16",
+      "visibility": 72.1517270409427,
+      "responses": 27
+    },
+    {
+      "date": "2026-07-17",
+      "visibility": 67.2725801000096,
+      "responses": 27
+    },
+    {
+      "date": "2026-07-18",
+      "visibility": 63.98161504872266,
+      "responses": 27
+    },
+    {
+      "date": "2026-07-19",
+      "visibility": 65.99407651936994,
+      "responses": 27
+    },
+    {
+      "date": "2026-07-20",
+      "visibility": 72.14926325797771,
+      "responses": 27
+    }
+  ],
+  "engines": [
+    {
+      "engine": "ChatGPT",
+      "responses": 135,
+      "visibility": 78,
+      "position": 2.6,
+      "sentiment": 81,
+      "sourceDomains": 92
+    },
+    {
+      "engine": "Gemini",
+      "responses": 135,
+      "visibility": 71.5,
+      "position": 3.4000000000000004,
+      "sentiment": 78.6,
+      "sourceDomains": 81
+    },
+    {
+      "engine": "Perplexity",
+      "responses": 135,
+      "visibility": 65,
+      "position": 4.2,
+      "sentiment": 76.2,
+      "sourceDomains": 70
+    },
+    {
+      "engine": "Copilot",
+      "responses": 135,
+      "visibility": 58.5,
+      "position": 5,
+      "sentiment": 73.8,
+      "sourceDomains": 59
+    }
+  ],
+  "prompts": [
+    {
+      "promptId": "prompt-0",
+      "prompt": "Which AI visibility platforms are best for growing brands?",
+      "topic": "AI visibility",
+      "responses": 20,
+      "visibility": 18,
+      "position": 7.2,
+      "sentiment": 61,
+      "status": "GAP"
+    },
+    {
+      "promptId": "prompt-1",
+      "prompt": "What are the strongest alternatives to Semrush for AI search tracking?",
+      "topic": "Competitor research",
+      "responses": 20,
+      "visibility": 25,
+      "position": 6.8,
+      "sentiment": 62.8,
+      "status": "GAP"
+    },
+    {
+      "promptId": "prompt-2",
+      "prompt": "Which tools monitor brand mentions across ChatGPT and Gemini?",
+      "topic": "AI visibility",
+      "responses": 20,
+      "visibility": 32,
+      "position": 6.4,
+      "sentiment": 64.6,
+      "status": "GAP"
+    },
+    {
+      "promptId": "prompt-3",
+      "prompt": "How can a marketing team improve visibility in AI-generated answers?",
+      "topic": "Competitor research",
+      "responses": 20,
+      "visibility": 39,
+      "position": 6,
+      "sentiment": 66.4,
+      "status": "OPPORTUNITY"
+    },
+    {
+      "promptId": "prompt-4",
+      "prompt": "What platform compares brand visibility against competitors?",
+      "topic": "AI visibility",
+      "responses": 20,
+      "visibility": 46,
+      "position": 5.6,
+      "sentiment": 68.2,
+      "status": "OPPORTUNITY"
+    },
+    {
+      "promptId": "prompt-5",
+      "prompt": "Which AI search analytics tools include source intelligence?",
+      "topic": "Competitor research",
+      "responses": 20,
+      "visibility": 53,
+      "position": 5.2,
+      "sentiment": 70,
+      "status": "OPPORTUNITY"
+    },
+    {
+      "promptId": "prompt-6",
+      "prompt": "How do agencies report AI visibility to enterprise clients?",
+      "topic": "AI visibility",
+      "responses": 20,
+      "visibility": 60,
+      "position": 4.8,
+      "sentiment": 71.8,
+      "status": "OPPORTUNITY"
+    },
+    {
+      "promptId": "prompt-7",
+      "prompt": "What is the best GEO platform for multi-brand teams?",
+      "topic": "Competitor research",
+      "responses": 20,
+      "visibility": 67,
+      "position": 4.4,
+      "sentiment": 73.6,
+      "status": "OPPORTUNITY"
+    },
+    {
+      "promptId": "prompt-8",
+      "prompt": "Which tools identify citation and content gaps in AI answers?",
+      "topic": "AI visibility",
+      "responses": 20,
+      "visibility": 74,
+      "position": 4,
+      "sentiment": 75.4,
+      "status": "LEADER"
+    },
+    {
+      "promptId": "prompt-9",
+      "prompt": "How can brands measure sentiment across AI search engines?",
+      "topic": "Competitor research",
+      "responses": 20,
+      "visibility": 81,
+      "position": 3.6,
+      "sentiment": 77.2,
+      "status": "LEADER"
+    },
+    {
+      "promptId": "prompt-10",
+      "prompt": "What software tracks prompts across multiple markets?",
+      "topic": "AI visibility",
+      "responses": 20,
+      "visibility": 88,
+      "position": 3.2,
+      "sentiment": 79,
+      "status": "LEADER"
+    },
+    {
+      "promptId": "prompt-11",
+      "prompt": "Which AI visibility platform supports evidence-level reporting?",
+      "topic": "Competitor research",
+      "responses": 20,
+      "visibility": 95,
+      "position": 2.8,
+      "sentiment": 80.8,
+      "status": "LEADER"
+    }
+  ],
+  "topics": [
+    {
+      "topic": "AI visibility",
+      "prompts": 6,
+      "responses": 270,
+      "visibility": 74.1,
+      "position": 2.9
+    },
+    {
+      "topic": "Competitor research",
+      "prompts": 6,
+      "responses": 270,
+      "visibility": 69.7,
+      "position": 3.4
+    }
+  ],
+  "brands": [
+    {
+      "rank": 1,
+      "brand": "Vikas Hospitals",
+      "visibility": 71.9,
+      "mentions": 388,
+      "position": 3.1,
+      "sentiment": 78.2,
+      "isOwnBrand": true
+    },
+    {
+      "rank": 2,
+      "brand": "Apollo Hospitals",
+      "visibility": 62.2,
+      "mentions": 336,
+      "position": 4.8,
+      "sentiment": 72.4,
+      "isOwnBrand": false
+    },
+    {
+      "rank": 3,
+      "brand": "Aster Hospitals",
+      "visibility": 57.8,
+      "mentions": 312,
+      "position": 5.2,
+      "sentiment": 69.8,
+      "isOwnBrand": false
+    },
+    {
+      "rank": 4,
+      "brand": "Manipal Hospitals",
+      "visibility": 53,
+      "mentions": 286,
+      "position": 5.9,
+      "sentiment": 70.5,
+      "isOwnBrand": false
+    },
+    {
+      "rank": 5,
+      "brand": "KIMS Hospitals",
+      "visibility": 44.6,
+      "mentions": 241,
+      "position": 6.4,
+      "sentiment": 67.2,
+      "isOwnBrand": false
+    },
+    {
+      "rank": 6,
+      "brand": "CARE Hospitals",
+      "visibility": 36.1,
+      "mentions": 195,
+      "position": 7.1,
+      "sentiment": 65.8,
+      "isOwnBrand": false
+    }
+  ],
+  "sources": [
+    {
+      "rank": 1,
+      "domain": "practo.com",
+      "title": "Authoritative healthcare source article 1",
+      "usedPct": 29,
+      "sourceType": "CORPORATE",
+      "citations": 42,
+      "url": "https://example.com/source-1",
+      "brandPresence": "CONFIRMED"
+    },
+    {
+      "rank": 2,
+      "domain": "justdial.com",
+      "title": "Authoritative healthcare source article 2",
+      "usedPct": 28.3,
+      "sourceType": "EDITORIAL",
+      "citations": 41,
+      "url": "https://example.com/source-2",
+      "brandPresence": "NOT_CONFIRMED"
+    },
+    {
+      "rank": 3,
+      "domain": "timesofindia.com",
+      "title": "Authoritative healthcare source article 3",
+      "usedPct": 27.6,
+      "sourceType": "EDITORIAL",
+      "citations": 40,
+      "url": "https://example.com/source-3",
+      "brandPresence": "NOT_CONFIRMED"
+    },
+    {
+      "rank": 4,
+      "domain": "vikashospitals.com",
+      "title": "Authoritative healthcare source article 4",
+      "usedPct": 26.9,
+      "sourceType": "CORPORATE",
+      "citations": 39,
+      "url": "https://example.com/source-4",
+      "brandPresence": "NOT_CONFIRMED"
+    },
+    {
+      "rank": 5,
+      "domain": "reddit.com",
+      "title": "Authoritative healthcare source article 5",
+      "usedPct": 26.2,
+      "sourceType": "EDITORIAL",
+      "citations": 38,
+      "url": "https://example.com/source-5",
+      "brandPresence": "CONFIRMED"
+    },
+    {
+      "rank": 6,
+      "domain": "practo.com",
+      "title": "Authoritative healthcare source article 6",
+      "usedPct": 25.5,
+      "sourceType": "EDITORIAL",
+      "citations": 37,
+      "url": "https://example.com/source-6",
+      "brandPresence": "NOT_CONFIRMED"
+    },
+    {
+      "rank": 7,
+      "domain": "justdial.com",
+      "title": "Authoritative healthcare source article 7",
+      "usedPct": 24.8,
+      "sourceType": "CORPORATE",
+      "citations": 36,
+      "url": "https://example.com/source-7",
+      "brandPresence": "NOT_CONFIRMED"
+    },
+    {
+      "rank": 8,
+      "domain": "timesofindia.com",
+      "title": "Authoritative healthcare source article 8",
+      "usedPct": 24.1,
+      "sourceType": "EDITORIAL",
+      "citations": 35,
+      "url": "https://example.com/source-8",
+      "brandPresence": "NOT_CONFIRMED"
+    },
+    {
+      "rank": 9,
+      "domain": "vikashospitals.com",
+      "title": "Authoritative healthcare source article 9",
+      "usedPct": 23.4,
+      "sourceType": "EDITORIAL",
+      "citations": 34,
+      "url": "https://example.com/source-9",
+      "brandPresence": "CONFIRMED"
+    },
+    {
+      "rank": 10,
+      "domain": "reddit.com",
+      "title": "Authoritative healthcare source article 10",
+      "usedPct": 22.7,
+      "sourceType": "CORPORATE",
+      "citations": 33,
+      "url": "https://example.com/source-10",
+      "brandPresence": "NOT_CONFIRMED"
+    },
+    {
+      "rank": 11,
+      "domain": "practo.com",
+      "title": "Authoritative healthcare source article 11",
+      "usedPct": 22,
+      "sourceType": "EDITORIAL",
+      "citations": 32,
+      "url": "https://example.com/source-11",
+      "brandPresence": "NOT_CONFIRMED"
+    },
+    {
+      "rank": 12,
+      "domain": "justdial.com",
+      "title": "Authoritative healthcare source article 12",
+      "usedPct": 21.3,
+      "sourceType": "EDITORIAL",
+      "citations": 31,
+      "url": "https://example.com/source-12",
+      "brandPresence": "NOT_CONFIRMED"
+    },
+    {
+      "rank": 13,
+      "domain": "timesofindia.com",
+      "title": "Authoritative healthcare source article 13",
+      "usedPct": 20.6,
+      "sourceType": "CORPORATE",
+      "citations": 30,
+      "url": "https://example.com/source-13",
+      "brandPresence": "CONFIRMED"
+    },
+    {
+      "rank": 14,
+      "domain": "vikashospitals.com",
+      "title": "Authoritative healthcare source article 14",
+      "usedPct": 19.9,
+      "sourceType": "EDITORIAL",
+      "citations": 29,
+      "url": "https://example.com/source-14",
+      "brandPresence": "NOT_CONFIRMED"
+    },
+    {
+      "rank": 15,
+      "domain": "reddit.com",
+      "title": "Authoritative healthcare source article 15",
+      "usedPct": 19.200000000000003,
+      "sourceType": "EDITORIAL",
+      "citations": 28,
+      "url": "https://example.com/source-15",
+      "brandPresence": "NOT_CONFIRMED"
+    },
+    {
+      "rank": 16,
+      "domain": "practo.com",
+      "title": "Authoritative healthcare source article 16",
+      "usedPct": 18.5,
+      "sourceType": "CORPORATE",
+      "citations": 27,
+      "url": "https://example.com/source-16",
+      "brandPresence": "NOT_CONFIRMED"
+    },
+    {
+      "rank": 17,
+      "domain": "justdial.com",
+      "title": "Authoritative healthcare source article 17",
+      "usedPct": 17.8,
+      "sourceType": "EDITORIAL",
+      "citations": 26,
+      "url": "https://example.com/source-17",
+      "brandPresence": "CONFIRMED"
+    },
+    {
+      "rank": 18,
+      "domain": "timesofindia.com",
+      "title": "Authoritative healthcare source article 18",
+      "usedPct": 17.1,
+      "sourceType": "EDITORIAL",
+      "citations": 25,
+      "url": "https://example.com/source-18",
+      "brandPresence": "NOT_CONFIRMED"
+    },
+    {
+      "rank": 19,
+      "domain": "vikashospitals.com",
+      "title": "Authoritative healthcare source article 19",
+      "usedPct": 16.4,
+      "sourceType": "CORPORATE",
+      "citations": 24,
+      "url": "https://example.com/source-19",
+      "brandPresence": "NOT_CONFIRMED"
+    },
+    {
+      "rank": 20,
+      "domain": "reddit.com",
+      "title": "Authoritative healthcare source article 20",
+      "usedPct": 15.700000000000001,
+      "sourceType": "EDITORIAL",
+      "citations": 23,
+      "url": "https://example.com/source-20",
+      "brandPresence": "NOT_CONFIRMED"
+    },
+    {
+      "rank": 21,
+      "domain": "practo.com",
+      "title": "Authoritative healthcare source article 21",
+      "usedPct": 15,
+      "sourceType": "EDITORIAL",
+      "citations": 22,
+      "url": "https://example.com/source-21",
+      "brandPresence": "CONFIRMED"
+    },
+    {
+      "rank": 22,
+      "domain": "justdial.com",
+      "title": "Authoritative healthcare source article 22",
+      "usedPct": 14.3,
+      "sourceType": "CORPORATE",
+      "citations": 21,
+      "url": "https://example.com/source-22",
+      "brandPresence": "NOT_CONFIRMED"
+    },
+    {
+      "rank": 23,
+      "domain": "timesofindia.com",
+      "title": "Authoritative healthcare source article 23",
+      "usedPct": 13.600000000000001,
+      "sourceType": "EDITORIAL",
+      "citations": 20,
+      "url": "https://example.com/source-23",
+      "brandPresence": "NOT_CONFIRMED"
+    },
+    {
+      "rank": 24,
+      "domain": "vikashospitals.com",
+      "title": "Authoritative healthcare source article 24",
+      "usedPct": 12.900000000000002,
+      "sourceType": "EDITORIAL",
+      "citations": 19,
+      "url": "https://example.com/source-24",
+      "brandPresence": "NOT_CONFIRMED"
+    },
+    {
+      "rank": 25,
+      "domain": "reddit.com",
+      "title": "Authoritative healthcare source article 25",
+      "usedPct": 12.200000000000003,
+      "sourceType": "CORPORATE",
+      "citations": 18,
+      "url": "https://example.com/source-25",
+      "brandPresence": "CONFIRMED"
+    },
+    {
+      "rank": 26,
+      "domain": "practo.com",
+      "title": "Authoritative healthcare source article 26",
+      "usedPct": 11.5,
+      "sourceType": "EDITORIAL",
+      "citations": 17,
+      "url": "https://example.com/source-26",
+      "brandPresence": "NOT_CONFIRMED"
+    }
+  ],
+  "sourceTypes": [
+    {
+      "sourceType": "EDITORIAL",
+      "domains": 12,
+      "citations": 188,
+      "confirmedDomains": 4
+    },
+    {
+      "sourceType": "CORPORATE",
+      "domains": 8,
+      "citations": 121,
+      "confirmedDomains": 2
+    },
+    {
+      "sourceType": "UGC",
+      "domains": 4,
+      "citations": 73,
+      "confirmedDomains": 1
+    },
+    {
+      "sourceType": "SOCIAL",
+      "domains": 2,
+      "citations": 35,
+      "confirmedDomains": 0
+    }
+  ],
+  "sentiment": {
+    "scoredResponses": 388,
+    "positive": 292,
+    "neutral": 78,
+    "negative": 18,
+    "average": 78.2
+  },
+  "opportunities": [
+    {
+      "title": "Improve coverage for high-intent healthcare query 1",
+      "prompt": "Which AI visibility platforms are best for growing brands?",
+      "competitor": "Apollo Hospitals",
+      "impact": "HIGH",
+      "effort": "MEDIUM",
+      "score": 91,
+      "nextStep": "Create or refresh a focused service page with physician proof, location relevance, FAQs, and structured evidence."
+    },
+    {
+      "title": "Improve coverage for high-intent healthcare query 2",
+      "prompt": "What are the strongest alternatives to Semrush for AI search tracking?",
+      "competitor": "Apollo Hospitals",
+      "impact": "HIGH",
+      "effort": "LOW",
+      "score": 86,
+      "nextStep": "Create or refresh a focused service page with physician proof, location relevance, FAQs, and structured evidence."
+    },
+    {
+      "title": "Improve coverage for high-intent healthcare query 3",
+      "prompt": "Which tools monitor brand mentions across ChatGPT and Gemini?",
+      "competitor": "Apollo Hospitals",
+      "impact": "HIGH",
+      "effort": "MEDIUM",
+      "score": 81,
+      "nextStep": "Create or refresh a focused service page with physician proof, location relevance, FAQs, and structured evidence."
+    },
+    {
+      "title": "Improve coverage for high-intent healthcare query 4",
+      "prompt": "How can a marketing team improve visibility in AI-generated answers?",
+      "competitor": "Apollo Hospitals",
+      "impact": "MEDIUM",
+      "effort": "LOW",
+      "score": 76,
+      "nextStep": "Create or refresh a focused service page with physician proof, location relevance, FAQs, and structured evidence."
+    },
+    {
+      "title": "Improve coverage for high-intent healthcare query 5",
+      "prompt": "What platform compares brand visibility against competitors?",
+      "competitor": "Apollo Hospitals",
+      "impact": "MEDIUM",
+      "effort": "MEDIUM",
+      "score": 71,
+      "nextStep": "Create or refresh a focused service page with physician proof, location relevance, FAQs, and structured evidence."
+    },
+    {
+      "title": "Improve coverage for high-intent healthcare query 6",
+      "prompt": "Which AI search analytics tools include source intelligence?",
+      "competitor": "Apollo Hospitals",
+      "impact": "MEDIUM",
+      "effort": "LOW",
+      "score": 66,
+      "nextStep": "Create or refresh a focused service page with physician proof, location relevance, FAQs, and structured evidence."
+    },
+    {
+      "title": "Improve coverage for high-intent healthcare query 7",
+      "prompt": "How do agencies report AI visibility to enterprise clients?",
+      "competitor": "Apollo Hospitals",
+      "impact": "MEDIUM",
+      "effort": "MEDIUM",
+      "score": 61,
+      "nextStep": "Create or refresh a focused service page with physician proof, location relevance, FAQs, and structured evidence."
+    }
+  ],
+  "actions": [
+    {
+      "priority": "HIGH",
+      "horizon": "NOW",
+      "title": "Strengthen high-intent healthcare visibility priority 1",
+      "rationale": "Measured prompt, engine, competitor, and source evidence indicates priority 1.",
+      "action": "Create or strengthen an evidence-rich service page, then earn authoritative third-party mentions and monitor movement.",
+      "evidence": "91 opportunity score with a measured competitor and source gap."
+    },
+    {
+      "priority": "HIGH",
+      "horizon": "NOW",
+      "title": "Strengthen high-intent healthcare visibility priority 2",
+      "rationale": "Measured prompt, engine, competitor, and source evidence indicates priority 2.",
+      "action": "Create or strengthen an evidence-rich service page, then earn authoritative third-party mentions and monitor movement.",
+      "evidence": "86 opportunity score with a measured competitor and source gap."
+    },
+    {
+      "priority": "MEDIUM",
+      "horizon": "NEXT",
+      "title": "Strengthen high-intent healthcare visibility priority 3",
+      "rationale": "Measured prompt, engine, competitor, and source evidence indicates priority 3.",
+      "action": "Create or strengthen an evidence-rich service page, then earn authoritative third-party mentions and monitor movement.",
+      "evidence": "81 opportunity score with a measured competitor and source gap."
+    },
+    {
+      "priority": "MEDIUM",
+      "horizon": "NEXT",
+      "title": "Strengthen high-intent healthcare visibility priority 4",
+      "rationale": "Measured prompt, engine, competitor, and source evidence indicates priority 4.",
+      "action": "Create or strengthen an evidence-rich service page, then earn authoritative third-party mentions and monitor movement.",
+      "evidence": "76 opportunity score with a measured competitor and source gap."
+    },
+    {
+      "priority": "MEDIUM",
+      "horizon": "LATER",
+      "title": "Strengthen high-intent healthcare visibility priority 5",
+      "rationale": "Measured prompt, engine, competitor, and source evidence indicates priority 5.",
+      "action": "Create or strengthen an evidence-rich service page, then earn authoritative third-party mentions and monitor movement.",
+      "evidence": "71 opportunity score with a measured competitor and source gap."
+    },
+    {
+      "priority": "MEDIUM",
+      "horizon": "LATER",
+      "title": "Strengthen high-intent healthcare visibility priority 6",
+      "rationale": "Measured prompt, engine, competitor, and source evidence indicates priority 6.",
+      "action": "Create or strengthen an evidence-rich service page, then earn authoritative third-party mentions and monitor movement.",
+      "evidence": "66 opportunity score with a measured competitor and source gap."
+    }
+  ],
+  "evidence": [
+    {
+      "date": "2026-07-24T12:00:00.000Z",
+      "engine": "ChatGPT",
+      "prompt": "Which AI visibility platforms are best for growing brands?",
+      "mentioned": false,
+      "position": null,
+      "sentiment": null,
+      "source": "practo.com"
+    },
+    {
+      "date": "2026-07-24T12:00:00.000Z",
+      "engine": "Gemini",
+      "prompt": "What are the strongest alternatives to Semrush for AI search tracking?",
+      "mentioned": true,
+      "position": 2,
+      "sentiment": 69,
+      "source": "justdial.com"
+    },
+    {
+      "date": "2026-07-24T12:00:00.000Z",
+      "engine": "Perplexity",
+      "prompt": "Which tools monitor brand mentions across ChatGPT and Gemini?",
+      "mentioned": true,
+      "position": 3,
+      "sentiment": 70,
+      "source": "timesofindia.com"
+    },
+    {
+      "date": "2026-07-24T12:00:00.000Z",
+      "engine": "Copilot",
+      "prompt": "How can a marketing team improve visibility in AI-generated answers?",
+      "mentioned": false,
+      "position": null,
+      "sentiment": null,
+      "source": "practo.com"
+    },
+    {
+      "date": "2026-07-23T12:00:00.000Z",
+      "engine": "ChatGPT",
+      "prompt": "What platform compares brand visibility against competitors?",
+      "mentioned": true,
+      "position": 5,
+      "sentiment": 72,
+      "source": "justdial.com"
+    },
+    {
+      "date": "2026-07-23T12:00:00.000Z",
+      "engine": "Gemini",
+      "prompt": "Which AI search analytics tools include source intelligence?",
+      "mentioned": true,
+      "position": 6,
+      "sentiment": 73,
+      "source": "timesofindia.com"
+    },
+    {
+      "date": "2026-07-23T12:00:00.000Z",
+      "engine": "Perplexity",
+      "prompt": "How do agencies report AI visibility to enterprise clients?",
+      "mentioned": false,
+      "position": null,
+      "sentiment": null,
+      "source": "practo.com"
+    },
+    {
+      "date": "2026-07-23T12:00:00.000Z",
+      "engine": "Copilot",
+      "prompt": "What is the best GEO platform for multi-brand teams?",
+      "mentioned": true,
+      "position": 1,
+      "sentiment": 75,
+      "source": "justdial.com"
+    },
+    {
+      "date": "2026-07-22T12:00:00.000Z",
+      "engine": "ChatGPT",
+      "prompt": "Which tools identify citation and content gaps in AI answers?",
+      "mentioned": true,
+      "position": 2,
+      "sentiment": 76,
+      "source": "timesofindia.com"
+    },
+    {
+      "date": "2026-07-22T12:00:00.000Z",
+      "engine": "Gemini",
+      "prompt": "How can brands measure sentiment across AI search engines?",
+      "mentioned": false,
+      "position": null,
+      "sentiment": null,
+      "source": "practo.com"
+    },
+    {
+      "date": "2026-07-22T12:00:00.000Z",
+      "engine": "Perplexity",
+      "prompt": "What software tracks prompts across multiple markets?",
+      "mentioned": true,
+      "position": 4,
+      "sentiment": 78,
+      "source": "justdial.com"
+    },
+    {
+      "date": "2026-07-22T12:00:00.000Z",
+      "engine": "Copilot",
+      "prompt": "Which AI visibility platform supports evidence-level reporting?",
+      "mentioned": true,
+      "position": 5,
+      "sentiment": 79,
+      "source": "timesofindia.com"
+    },
+    {
+      "date": "2026-07-21T12:00:00.000Z",
+      "engine": "ChatGPT",
+      "prompt": "Which AI visibility platforms are best for growing brands?",
+      "mentioned": false,
+      "position": null,
+      "sentiment": null,
+      "source": "practo.com"
+    },
+    {
+      "date": "2026-07-21T12:00:00.000Z",
+      "engine": "Gemini",
+      "prompt": "What are the strongest alternatives to Semrush for AI search tracking?",
+      "mentioned": true,
+      "position": 7,
+      "sentiment": 81,
+      "source": "justdial.com"
+    },
+    {
+      "date": "2026-07-21T12:00:00.000Z",
+      "engine": "Perplexity",
+      "prompt": "Which tools monitor brand mentions across ChatGPT and Gemini?",
+      "mentioned": true,
+      "position": 1,
+      "sentiment": 82,
+      "source": "timesofindia.com"
+    },
+    {
+      "date": "2026-07-21T12:00:00.000Z",
+      "engine": "Copilot",
+      "prompt": "How can a marketing team improve visibility in AI-generated answers?",
+      "mentioned": false,
+      "position": null,
+      "sentiment": null,
+      "source": "practo.com"
+    },
+    {
+      "date": "2026-07-20T12:00:00.000Z",
+      "engine": "ChatGPT",
+      "prompt": "What platform compares brand visibility against competitors?",
+      "mentioned": true,
+      "position": 3,
+      "sentiment": 84,
+      "source": "justdial.com"
+    },
+    {
+      "date": "2026-07-20T12:00:00.000Z",
+      "engine": "Gemini",
+      "prompt": "Which AI search analytics tools include source intelligence?",
+      "mentioned": true,
+      "position": 4,
+      "sentiment": 85,
+      "source": "timesofindia.com"
+    },
+    {
+      "date": "2026-07-20T12:00:00.000Z",
+      "engine": "Perplexity",
+      "prompt": "How do agencies report AI visibility to enterprise clients?",
+      "mentioned": false,
+      "position": null,
+      "sentiment": null,
+      "source": "practo.com"
+    },
+    {
+      "date": "2026-07-20T12:00:00.000Z",
+      "engine": "Copilot",
+      "prompt": "What is the best GEO platform for multi-brand teams?",
+      "mentioned": true,
+      "position": 6,
+      "sentiment": 69,
+      "source": "justdial.com"
+    },
+    {
+      "date": "2026-07-19T12:00:00.000Z",
+      "engine": "ChatGPT",
+      "prompt": "Which tools identify citation and content gaps in AI answers?",
+      "mentioned": true,
+      "position": 7,
+      "sentiment": 70,
+      "source": "timesofindia.com"
+    },
+    {
+      "date": "2026-07-19T12:00:00.000Z",
+      "engine": "Gemini",
+      "prompt": "How can brands measure sentiment across AI search engines?",
+      "mentioned": false,
+      "position": null,
+      "sentiment": null,
+      "source": "practo.com"
+    },
+    {
+      "date": "2026-07-19T12:00:00.000Z",
+      "engine": "Perplexity",
+      "prompt": "What software tracks prompts across multiple markets?",
+      "mentioned": true,
+      "position": 2,
+      "sentiment": 72,
+      "source": "justdial.com"
+    },
+    {
+      "date": "2026-07-19T12:00:00.000Z",
+      "engine": "Copilot",
+      "prompt": "Which AI visibility platform supports evidence-level reporting?",
+      "mentioned": true,
+      "position": 3,
+      "sentiment": 73,
+      "source": "timesofindia.com"
+    }
+  ],
+  "coverage": {
+    "activePrompts": 50,
+    "representedPrompts": 12,
+    "responses": 540,
+    "successfulRuns": 27,
+    "partialRuns": 2,
+    "failedRuns": 1,
+    "completedJobs": 540,
+    "failedJobs": 8,
+    "firstResponseAt": "2026-06-27T12:00:00.000Z",
+    "lastResponseAt": "2026-07-26T12:00:00.000Z"
+  },
+  "executiveHeadline": "Vikas Hospitals is visible in 71.9% of analyzed AI responses at an average position of #3.1.",
+  "executivePoints": [
+    "Visibility improved by 5.5 points versus the previous period.",
+    "ChatGPT is the strongest measured engine at 78.0% visibility.",
+    "Three tracked prompts currently sit in the visibility gap tier.",
+    "Apollo Hospitals is the strongest measured competitor in this response set.",
+    "Seven evidence-backed opportunities are ready for prioritization."
+  ],
+  "methodology": [
+    "Visibility is the share of successfully analyzed AI responses that mention the tracked brand.",
+    "Average position is calculated only for responses where the tracked brand is present; lower is better.",
+    "Brand names are normalized case-insensitively before aggregation to prevent duplicate leaderboard entries.",
+    "Engine, prompt, competitor, sentiment, and source metrics reuse stored response evidence; this export makes no new provider or LLM calls.",
+    "Confirmed source brand presence is shown only when structured source metadata explicitly contains the tracked brand.",
+    "Previous-period changes use the immediately preceding reporting window.",
+    "Results reflect successful stored responses and active report filters."
+  ]
+}

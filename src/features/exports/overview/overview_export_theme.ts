@@ -1,0 +1,32 @@
+export const OVERVIEW_PDF = {
+    navy: "#07152D",
+    navySoft: "#102B4E",
+    blue: "#2F80ED",
+    sky: "#61C7F2",
+    mint: "#A7F3D0",
+    paper: "#F8FAFC",
+    white: "#FFFFFF",
+    ink: "#0F172A",
+    text: "#334155",
+    muted: "#64748B",
+    faint: "#94A3B8",
+    border: "#DCE5EE",
+    softBlue: "#EDF7FF",
+    softMint: "#ECFDF5",
+}
+
+export const OVERVIEW_XL = {
+    navy: "FF07152D",
+    navySoft: "FF102B4E",
+    blue: "FF2F80ED",
+    sky: "FF61C7F2",
+    mint: "FFA7F3D0",
+    white: "FFFFFFFF",
+    paper: "FFF8FAFC",
+    ink: "FF0F172A",
+    text: "FF334155",
+    muted: "FF64748B",
+    border: "FFDCE5EE",
+    softBlue: "FFEDF7FF",
+    softMint: "FFECFDF5",
+}

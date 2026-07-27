@@ -1,4 +1,4 @@
-const DEFAULT_REFRESH_TIMEZONE = "America/New_York"
+const DEFAULT_REFRESH_TIMEZONE = "Asia/Kolkata"
 
 function readTimeZone() {
     return process.env.REFRESH_TIMEZONE?.trim()
