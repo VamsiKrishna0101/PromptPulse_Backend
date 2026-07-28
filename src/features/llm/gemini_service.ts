@@ -156,7 +156,7 @@ export async function analyzeResponse(
     ) {
         throw new Error(
             "Kimi analysis is required but the Bedrock gateway is not configured. "
-            + "Set AWS_BEDROCK_GATEWAY_API_KEY before processing responses."
+            + "Configure a supported Bedrock gateway credential on this runtime."
         )
     }
 

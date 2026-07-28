@@ -403,6 +403,19 @@ async function completeBatchFromRecords(batch: BrightDataBatchWithItems, records
         },
     })
 
+    const failureReasons = failed > 0
+        ? await prisma.brightDataBatchItem.findMany({
+            where: {
+                batch_id: batch.id,
+                status: BrightDataBatchItemStatus.FAILED,
+                error_reason: { not: null },
+            },
+            select: { error_reason: true },
+            distinct: ["error_reason"],
+            take: 5,
+        })
+        : []
+
     await Promise.all([...runIds].map(runId => refreshRunStatus(runId)))
 
     return {
@@ -412,6 +425,9 @@ async function completeBatchFromRecords(batch: BrightDataBatchWithItems, records
         completed,
         failed,
         input_count: batch.items.length,
+        errors: failureReasons
+            .map(item => item.error_reason)
+            .filter((reason): reason is string => Boolean(reason)),
     }
 }
 

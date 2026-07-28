@@ -13,6 +13,7 @@
     "brightdata:trigger": "tsx src/scripts/brightdata_trigger_batches.ts",
     "brightdata:poll": "tsx src/scripts/brightdata_poll_batches.ts",
     "brightdata:watch": "tsx src/scripts/brightdata_watch_batches.ts",
+    "brightdata:recover-kimi": "tsx src/scripts/recover_kimi_analysis_batches.ts",
     "sources:enrich-pending": "tsx src/scripts/enrich_pending_sources.ts",
     "scheduler:daily": "tsx src/scheduler/daily_scheduler.ts",
     "scheduler:weekly-email": "tsx src/scheduler/weekly_email_scheduler.ts",

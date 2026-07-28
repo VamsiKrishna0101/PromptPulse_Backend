@@ -34,7 +34,11 @@ export async function generateWithBedrockGateway(
 ) {
     const apiKey = getBedrockGatewayApiKey()
     if (!apiKey) {
-        throw new Error("AWS_BEARER_TOKEN_BEDROCK is missing.")
+        throw new Error(
+            "Bedrock gateway credential is missing. Configure "
+            + "AWS_BEARER_TOKEN_BEDROCK, AWS_BEDROCK_GATEWAY_API_KEY, "
+            + "AWS_BEDROCK_API_KEY, or BEDROCK_API_KEY."
+        )
     }
 
     const baseUrl = process.env.AWS_BEDROCK_OPENAI_BASE_URL ?? DEFAULT_BASE_URL
@@ -95,6 +99,7 @@ export async function generateWithBedrockGateway(
 function getBedrockGatewayApiKey() {
     return (
         process.env.AWS_BEARER_TOKEN_BEDROCK ||
+        process.env.AWS_BEDROCK_GATEWAY_API_KEY ||
         process.env.AWS_BEDROCK_API_KEY ||
         process.env.BEDROCK_API_KEY ||
         ""
