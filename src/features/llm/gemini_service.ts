@@ -5,7 +5,9 @@ import { buildBrandPromptGenerationSystemPrompt, buildBrandPromptGenerationUserP
 import { buildAnalysisSystemPrompt, buildAnalysisUserPrompt, type AnalysisResult } from '../../prompts/analysis_prompts'
 import { buildBrandResearchSystemPrompt, buildBrandResearchUserPrompt, type BrandResearchResult } from '../../prompts/research_prompts'
 import { generateWithBedrockGateway, hasBedrockGateway } from './bedrock_gateway_service'
-import { sanitizeDiscoveredBrandName } from '../brands/brand_entity_policy'
+import { isEligibleCompetitorEntity, normalizeEntityDomain, sanitizeDiscoveredBrandName } from '../brands/brand_entity_policy'
+import { normalizeStrictBrandName } from '../brands/strict_brand_matcher'
+import { analyzeUiAnswerWithKimi } from './analysis/kimi_analysis_service'
 
 const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
 const model = genai.getGenerativeModel({ model: 'gemini-3.1-flash-lite' })
@@ -127,11 +129,6 @@ export async function summarizeBrandResearch(
     }
 }
 
-// Maximum characters of raw response we send to the analysis LLM.
-// Keeps the generated JSON well under token limits while still having
-// enough context to find brands, sentiment, and sources.
-const MAX_RAW_FOR_ANALYSIS = 14_000
-
 export async function analyzeResponse(
     raw_response: string,
     ai_model: string,
@@ -140,23 +137,31 @@ export async function analyzeResponse(
     citations?: { url?: string | null; domain?: string | null; title?: string | null; text?: string | null; is_cited?: boolean | null; source_kind?: string | null }[]
 ): Promise<AnalysisResult & { ai_model: string }> {
     const systemPrompt = buildAnalysisSystemPrompt()
-    // Truncate to keep the outgoing prompt + JSON response within token budget.
-    const truncatedResponse = raw_response.length > MAX_RAW_FOR_ANALYSIS
-        ? raw_response.slice(0, MAX_RAW_FOR_ANALYSIS) + '\n[...truncated for analysis...]'
-        : raw_response
-    const userPrompt = buildAnalysisUserPrompt(truncatedResponse, brand_name, brand_url, citations)
+    const userPrompt = buildAnalysisUserPrompt(raw_response, brand_name, brand_url, citations)
 
     if (hasBedrockGateway()) {
-        const parsed = parseJson<AnalysisResult>(
-            await generateWithBedrockGateway(systemPrompt, userPrompt, {
-                temperature: 0,
-                maxTokens: 8192,
-                responseFormat: "json_object",
-            })
-        )
+        const parsed = await analyzeUiAnswerWithKimi({
+            uiAnswer: raw_response,
+            sourceModel: ai_model,
+            brandName: brand_name,
+            brandUrl: brand_url,
+            citations,
+        })
         return { ...normalizeAnalysisResult(parsed, raw_response, brand_name, brand_url, citations), ai_model }
     }
 
+    if (
+        process.env.NODE_ENV === "production"
+        || process.env.KIMI_ANALYSIS_REQUIRED?.trim().toLowerCase() === "true"
+    ) {
+        throw new Error(
+            "Kimi analysis is required but the Bedrock gateway is not configured. "
+            + "Set AWS_BEDROCK_GATEWAY_API_KEY before processing responses."
+        )
+    }
+
+    // Local development may still use the legacy providers when explicitly run
+    // without Bedrock credentials. Production never silently bypasses Kimi.
     try {
         const result = await model.generateContent([
             { text: systemPrompt },
@@ -236,11 +241,29 @@ function normalizeAnalysisResult(
     brandUrl: string,
     citations: { url?: string | null; domain?: string | null; title?: string | null; text?: string | null; is_cited?: boolean | null; source_kind?: string | null }[] = []
 ): AnalysisResult {
-    const brandMentioned = hasVisibleBrandMention(rawResponse, brandName, brandUrl)
     const normalizedBrandMentions = dedupeBrandMentions([
         ...analysis.brand_mentions,
         ...extractKnownBrandMentions(rawResponse),
     ], citations, brandName, brandUrl)
+    const semanticTrackedMention = normalizedBrandMentions.find(
+        mention => mention.entity_type === "TRACKED_BRAND"
+    )
+    const brandMentioned = Boolean(analysis.brand_mentioned || semanticTrackedMention)
+
+    if (brandMentioned && !semanticTrackedMention) {
+        normalizedBrandMentions.push({
+            brand_name: brandName,
+            canonical_brand_name: brandName,
+            domain: safeDomain(brandUrl),
+            entity_type: "TRACKED_BRAND",
+            position: analysis.brand_position ?? null,
+            sentiment_score: analysis.sentiment_score ?? null,
+            evidence: analysis.matched_brand_name ?? null,
+        })
+    }
+    const trackedMention = normalizedBrandMentions.find(
+        mention => mention.entity_type === "TRACKED_BRAND"
+    )
 
     const citationSources = citations
         .filter(citation => citation.url)
@@ -290,22 +313,15 @@ function normalizeAnalysisResult(
     return {
         ...analysis,
         brand_mentioned: brandMentioned,
-        brand_position: brandMentioned ? analysis.brand_position : null,
-        sentiment_score: brandMentioned ? analysis.sentiment_score : null,
+        brand_position: brandMentioned
+            ? analysis.brand_position ?? trackedMention?.position ?? null
+            : null,
+        sentiment_score: brandMentioned
+            ? analysis.sentiment_score ?? trackedMention?.sentiment_score ?? null
+            : null,
         brand_mentions: normalizedBrandMentions,
         sources: normalizedSources,
     }
-}
-
-function hasVisibleBrandMention(rawResponse: string, brandName: string, brandUrl: string) {
-    const lower = rawResponse.toLowerCase()
-    const brand = brandName.trim().toLowerCase()
-    if (brand && new RegExp(`(^|[^a-z0-9])${escapeRegExp(brand)}([^a-z0-9]|$)`, "i").test(rawResponse)) {
-        return true
-    }
-
-    const domain = safeDomain(brandUrl)
-    return Boolean(domain && lower.includes(domain.toLowerCase()))
 }
 
 function dedupeBrandMentions(
@@ -319,20 +335,73 @@ function dedupeBrandMentions(
     for (const mention of mentions) {
         const sanitizedName = sanitizeDiscoveredBrandName(mention.brand_name)
         if (!sanitizedName) continue
-        const brandName = canonicalBrandName(sanitizedName)
-        const key = brandName.toLowerCase()
+        const isTrackedBrand = mention.entity_type === "TRACKED_BRAND"
+            || normalizeBrandKey(sanitizedName) === normalizeBrandKey(trackedBrandName)
+        const brandName = isTrackedBrand
+            ? trackedBrandName
+            : canonicalBrandName(mention.canonical_brand_name || sanitizedName)
+        if (
+            !isTrackedBrand
+            && mention.entity_type
+            && mention.entity_type !== "COMPETITOR"
+        ) continue
+        if (
+            !isTrackedBrand
+            && !isEligibleCompetitorEntity({
+                name: brandName,
+                ownBrandName: trackedBrandName,
+                ownBrandUrl: trackedBrandUrl,
+            })
+        ) continue
+
+        const key = normalizeBrandKey(brandName)
         if (!key || seen.has(key)) continue
         seen.add(key)
-        const isTrackedBrand = normalizeBrandKey(brandName) === normalizeBrandKey(trackedBrandName)
         normalized.push({
             ...mention,
             brand_name: brandName,
+            canonical_brand_name: brandName,
+            entity_type: isTrackedBrand ? "TRACKED_BRAND" : "COMPETITOR",
             domain: isTrackedBrand
                 ? safeDomain(trackedBrandUrl)
-                : normalizeBrandDomain(mention.domain) || domainFromCitations(brandName, citations) || knownBrandDomain(brandName),
+                : resolveOfficialCompetitorDomain(
+                    brandName,
+                    mention.domain,
+                    citations,
+                    trackedBrandName,
+                    trackedBrandUrl,
+                ),
         })
     }
     return normalized
+}
+
+function resolveOfficialCompetitorDomain(
+    brandName: string,
+    modelDomain: string | null | undefined,
+    citations: { url?: string | null; domain?: string | null; title?: string | null }[],
+    trackedBrandName: string,
+    trackedBrandUrl: string,
+) {
+    const candidates = [
+        modelDomain,
+        domainFromCitations(brandName, citations),
+        knownBrandDomain(brandName),
+    ]
+
+    for (const candidate of candidates) {
+        const domain = normalizeEntityDomain(candidate)
+        if (!domain || !domain.includes(".") || !/^[a-z0-9.-]+$/.test(domain)) continue
+        if (!isEligibleCompetitorEntity({
+            name: brandName,
+            domain,
+            ownBrandName: trackedBrandName,
+            ownBrandUrl: trackedBrandUrl,
+        })) continue
+        return domain
+    }
+
+    return null
 }
 
 function extractKnownBrandMentions(rawResponse: string): AnalysisResult["brand_mentions"] {
@@ -525,7 +594,7 @@ function canonicalBrandName(brandName: string) {
 }
 
 function normalizeBrandKey(brandName: string) {
-    return brandName.toLowerCase().replace(/[^a-z0-9]/g, "")
+    return normalizeStrictBrandName(brandName)
 }
 
 function escapeRegExp(value: string) {

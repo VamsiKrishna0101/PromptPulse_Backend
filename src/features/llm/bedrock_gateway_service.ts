@@ -29,6 +29,7 @@ export async function generateWithBedrockGateway(
         temperature?: number
         maxTokens?: number
         responseFormat?: "json_object"
+        model?: string
     }
 ) {
     const apiKey = getBedrockGatewayApiKey()
@@ -37,7 +38,7 @@ export async function generateWithBedrockGateway(
     }
 
     const baseUrl = process.env.AWS_BEDROCK_OPENAI_BASE_URL ?? DEFAULT_BASE_URL
-    const model = process.env.AWS_BEDROCK_LLM_MODEL ?? DEFAULT_MODEL
+    const model = options?.model ?? process.env.AWS_BEDROCK_LLM_MODEL ?? DEFAULT_MODEL
     const url = `${baseUrl.replace(/\/$/, "")}/chat/completions`
     const attempts = Number(process.env.LLM_RETRY_ATTEMPTS ?? 3)
     const baseDelay = Number(process.env.LLM_RETRY_BASE_DELAY_MS ?? 1500)

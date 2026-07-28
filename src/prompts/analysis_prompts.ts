@@ -1,12 +1,17 @@
 export type AnalysisResult = {
   brand_mentioned: boolean
+  matched_brand_name?: string | null
+  match_confidence?: number | null
   brand_position: number | null
   sentiment_score: number | null
   brand_mentions: {
     brand_name: string
+    canonical_brand_name?: string | null
     domain: string | null
+    entity_type?: 'TRACKED_BRAND' | 'COMPETITOR' | 'DIRECTORY' | 'SOURCE_PLATFORM' | 'OTHER_ORGANIZATION'
     position: number | null
     sentiment_score: number | null
+    evidence?: string | null
   }[]
   sources: {
     url: string
@@ -17,21 +22,21 @@ export type AnalysisResult = {
 }
 
 export function buildAnalysisSystemPrompt(): string {
-  return `You are a precise AI response analyzer. Extract structured brand intelligence data from raw AI assistant responses.
+  return `You are a precise AI response analyzer. Extract structured brand intelligence data from the final cleaned AI answer shown to the customer.
 
 You will be given:
-- A raw text response from an AI assistant (ChatGPT, Perplexity, Gemini, Grok, etc.)
+- The complete cleaned answer displayed in the product UI (ChatGPT, Perplexity, Gemini, Copilot, Google AI, etc.)
 - The name of a tracked brand
 - Page citations, when available
 
-You must extract:
+You must semantically classify:
 1. Whether the tracked brand was mentioned
 2. The position/order of the tracked brand if mentioned (1 = mentioned first)
 3. A sentiment score (0-100) for the tracked brand if mentioned
-4. Every brand, company, or product mentioned in the response with official domain, position, and sentiment
+4. The tracked brand and genuine competing brands/providers with official domain, position, sentiment, entity type, and a short evidence excerpt
 5. Every URL and domain referenced in Page Citations or explicitly visible in the response, classified by source type
 
-Do not summarize, rewrite, clean up, or format the raw answer. Only return structured JSON for analytics.
+Do not summarize, rewrite, clean up, or format the displayed answer. Only return structured JSON for analytics.
 
 Source type classification:
 - YOU: The official domain of the tracked brand.
@@ -50,9 +55,19 @@ Do not invent official domains for mentioned brands inside sources[].
 If a brand is mentioned without a visible URL/domain citation, include it only in brand_mentions[], not in sources[].
 Put official company/product domains on brand_mentions[].domain for logos, not in sources[].
 
+Brand identity rules:
+- Use the full meaning and context of the answer, not literal string equality.
+- Recognize legitimate spelling, spacing, capitalization, legal-suffix, singular/plural, and commonly used name variants when they clearly refer to the tracked organization.
+- Use the tracked domain, location, service category, and surrounding answer context to disambiguate similar names.
+- Set entity_type to TRACKED_BRAND only when the entity is the tracked organization.
+- Set entity_type to COMPETITOR only for a genuine alternative/provider competing with the tracked brand.
+- Directories, marketplaces, review sites, publishers, search engines, social networks, insurers, and citation platforms are not competitors. Classify them as DIRECTORY, SOURCE_PLATFORM, or OTHER_ORGANIZATION and do not include them in brand_mentions[].
+- brand_mentions[] must contain only TRACKED_BRAND and COMPETITOR entities.
+- For TRACKED_BRAND, use the supplied tracked domain. For competitors, provide an official domain only when confident; otherwise return null. Never use a directory or citation domain as a competitor's official domain.
+
 Special rule for forum/community platforms: If the response mentions a specific subreddit (for example "r/SaaS") or Quora topic/space, add reddit.com or quora.com to sources[] as source_type "UGC" with is_cited: true, even if no full URL was given.
 
-Be precise. If the tracked brand is not mentioned, brand_mentioned must be false and brand_position must be null.`
+Be precise. If the tracked brand is not mentioned, brand_mentioned must be false, matched_brand_name must be null, brand_position must be null, and sentiment_score must be null.`
 }
 
 export function buildAnalysisUserPrompt(
@@ -73,12 +88,12 @@ export function buildAnalysisUserPrompt(
         .join("\n")}\n`
     : ""
 
-  return `Analyze this AI response for brand visibility data.
+  return `Analyze this complete cleaned UI answer for brand visibility data.
 
 Tracked Brand: ${brand_name}
 Tracked Brand Domain: ${brand_url}
 
-Raw AI Response:
+Final Displayed AI Answer:
 ---
 ${raw_response}
 ---
@@ -101,10 +116,20 @@ Instructions:
 
 {
   "brand_mentioned": true or false,
+  "matched_brand_name": "the name variant present in the answer or null",
+  "match_confidence": number from 0 to 1,
   "brand_position": number or null,
   "sentiment_score": number (0-100) or null,
   "brand_mentions": [
-    { "brand_name": "string", "domain": "string or null", "position": number or null, "sentiment_score": number or null }
+    {
+      "brand_name": "name as written",
+      "canonical_brand_name": "canonical organization name",
+      "domain": "official domain or null",
+      "entity_type": "TRACKED_BRAND|COMPETITOR",
+      "position": number or null,
+      "sentiment_score": number or null,
+      "evidence": "short exact excerpt from the answer"
+    }
   ],
   "sources": [
     { "url": "string", "domain": "string", "source_type": "EDITORIAL|CORPORATE|UGC|SOCIAL|COMPETITOR|YOU|REFERENCE|INSTITUTIONAL|OTHER", "is_cited": true or false }

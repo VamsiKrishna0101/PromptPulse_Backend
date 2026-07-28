@@ -5,6 +5,7 @@ import type { RunPromptInput, DashboardDataInput } from "./dashboard_types"
 import { enqueueSourceEnrichment } from "../../queues/source_enrichment_queue"
 import { ingestChatById } from "../rag/ingestion_service"
 import { normalizeAnswerBlocks } from "./answer_block_normalizer"
+import { normalizeEntityDomain } from "../brands/brand_entity_policy"
 
 export interface DashboardFilters {
     days?: number
@@ -493,6 +494,7 @@ export async function getVisibilityTimeSeries(project_id: string, filters?: Dash
             brand_mentions: {
                 select: {
                     brand_name: true,
+                    domain: true,
                 },
             },
             run: { select: { ran_at: true } }
@@ -506,6 +508,15 @@ export async function getVisibilityTimeSeries(project_id: string, filters?: Dash
         where: { id: project_id },
         include: { competitors: true }
     })
+    const mentionDomains = new Map<string, string>()
+    for (const chat of chats) {
+        for (const mention of chat.brand_mentions) {
+            const domain = normalizeEntityDomain(mention.domain)
+            if (domain && !mentionDomains.has(mention.brand_name)) {
+                mentionDomains.set(mention.brand_name, domain)
+            }
+        }
+    }
 
     for (const chat of chats) {
         const dateKey = chat.run.ran_at.toISOString().slice(0, 10)
@@ -534,11 +545,18 @@ export async function getVisibilityTimeSeries(project_id: string, filters?: Dash
             const brands: Record<string, number> = {
                 [project.brand_name]: data.total > 0 ? (data.brandHit / data.total) * 100 : 0
             }
+            const brand_domains: Record<string, string | null> = {
+                [project.brand_name]: normalizeEntityDomain(project.brand_url),
+            }
             for (const name of competitorNames) {
                 const hits = data.competitorHits.get(name) ?? 0
                 brands[name] = data.total > 0 ? (hits / data.total) * 100 : 0
+                const configuredUrl = project.competitors.find(competitor => competitor.name === name)?.url
+                brand_domains[name] = normalizeEntityDomain(configuredUrl)
+                    ?? mentionDomains.get(name)
+                    ?? null
             }
-            return { date, total_chats: data.total, brands }
+            return { date, total_chats: data.total, brands, brand_domains }
         })
 }
 
