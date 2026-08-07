@@ -6,6 +6,7 @@ import { canRunRefresh } from "../subscription/subscription_service"
 import { getRefreshWindowStart } from "../refresh/refresh_window"
 import { activeConfiguredEngines, isActiveScrapeEngine } from "./scrape_engine_policy"
 import { getProjectEngines } from "../project_engines/project_engines_service"
+import { assertScrapingEnabled } from "./scrape_gate"
 
 export async function enqueueProjectRun(input: {
     project_id: string
@@ -15,6 +16,7 @@ export async function enqueueProjectRun(input: {
     profile?: string
     enqueue_jobs?: boolean
 }) {
+    assertScrapingEnabled()
     const configuredEngineSet = new Set(activeConfiguredEngines())
     const requestedEngines = input.engines?.length ? input.engines : await getProjectEngines(input.project_id)
     const engines = [...new Set(requestedEngines.filter(engine => isActiveScrapeEngine(engine) && configuredEngineSet.has(engine)))]

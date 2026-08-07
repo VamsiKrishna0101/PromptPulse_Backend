@@ -2,10 +2,12 @@ import { Engine, ScrapeJobStatus, VisibilityRunStatus } from "@prisma/client"
 import prisma from "../../lib/prisma"
 import { ACTIVE_SCRAPE_ENGINES, isActiveScrapeEngine } from "./scrape_engine_policy"
 import { getProjectEngines } from "../project_engines/project_engines_service"
+import { assertScrapingEnabled } from "./scrape_gate"
 
 export const MAX_MANUAL_SCRAPE_RETRIES = 2
 
 export async function retryFailedJobsForRun(run_id: string) {
+    assertScrapingEnabled()
     const run = await prisma.run.findUnique({
         where: { id: run_id },
         select: { id: true, project_id: true },

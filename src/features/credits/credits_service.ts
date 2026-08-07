@@ -48,19 +48,18 @@ export async function spendCredits(input: CreditSpendInput) {
     const billingUserId = await resolveBillingUserId(input.userId)
 
     // Idempotency: check if already processed
-    const existing = await prisma.creditTransaction.findFirst({
-        where: { user_id: billingUserId, metadata: { path: ["idempotency_key"], equals: input.idempotencyKey } },
-    })
+    const existing = await prisma.creditTransaction.findUnique({ where: { idempotency_key: input.idempotencyKey } })
     if (existing) return existing
 
-    const user = await prisma.user.findUnique({ where: { id: billingUserId }, select: { credits_balance: true } })
-    const balance = user?.credits_balance ?? 0
-
-    if (balance < input.amount) {
-        throw new InsufficientCreditsError(input.amount, balance)
-    }
-
-    const [, transaction] = await prisma.$transaction(async tx => {
+    const transaction = await prisma.$transaction(async tx => {
+        const debited = await tx.user.updateMany({
+            where: { id: billingUserId, credits_balance: { gte: input.amount } },
+            data: { credits_balance: { decrement: input.amount } },
+        })
+        if (debited.count === 0) {
+            const user = await tx.user.findUnique({ where: { id: billingUserId }, select: { credits_balance: true } })
+            throw new InsufficientCreditsError(input.amount, user?.credits_balance ?? 0)
+        }
         const buckets = await tx.creditBucket.findMany({ where: { user_id: billingUserId, amount_remaining: { gt: 0 } }, orderBy: { created_at: "asc" } })
         let remaining = input.amount
         for (const bucket of buckets.sort((a, b) => Number(a.expires_at === null) - Number(b.expires_at === null))) {
@@ -69,9 +68,7 @@ export async function spendCredits(input: CreditSpendInput) {
             await tx.creditBucket.update({ where: { id: bucket.id }, data: { amount_remaining: { decrement: used } } })
             remaining -= used
         }
-        const updatedUser = await tx.user.update({ where: { id: billingUserId }, data: { credits_balance: { decrement: input.amount } } })
-        const creditTransaction = await tx.creditTransaction.create({ data: { user_id: billingUserId, amount: -input.amount, action: input.action, description: input.description ?? input.action, metadata: { idempotency_key: input.idempotencyKey, actor_user_id: input.userId, ...(input.metadata ?? {}) } } })
-        return [updatedUser, creditTransaction] as const
+        return tx.creditTransaction.create({ data: { user_id: billingUserId, idempotency_key: input.idempotencyKey, amount: -input.amount, action: input.action, description: input.description ?? input.action, metadata: { idempotency_key: input.idempotencyKey, actor_user_id: input.userId, ...(input.metadata ?? {}) } } })
     })
 
     return transaction
@@ -86,9 +83,7 @@ export async function refundCredits(input: CreditRefundInput) {
     const billingUserId = await resolveBillingUserId(input.userId)
 
     const refundKey = `refund:${input.idempotencyKey}`
-    const existing = await prisma.creditTransaction.findFirst({
-        where: { user_id: billingUserId, metadata: { path: ["idempotency_key"], equals: refundKey } },
-    })
+    const existing = await prisma.creditTransaction.findUnique({ where: { idempotency_key: refundKey } })
     if (existing) return existing
 
     const [, transaction] = await prisma.$transaction([
@@ -99,6 +94,7 @@ export async function refundCredits(input: CreditRefundInput) {
         prisma.creditTransaction.create({
             data: {
                 user_id:     billingUserId,
+                idempotency_key: refundKey,
                 amount:      +input.amount,
                 action:      `REFUND_${input.action}`,
                 description: input.description ?? `Refund: ${input.action}`,

@@ -1,7 +1,7 @@
 import type { Request, Response } from "express"
 import { z } from "zod"
 import type { AuthenticatedRequest } from "../../middleware/auth"
-import { getSettings, updatePassword } from "./settings_service"
+import { getSettings, updateAccountType, updatePassword } from "./settings_service"
 
 const passwordSchema = z.object({
     current_password: z.string().min(1, "Current password is required"),
@@ -11,6 +11,8 @@ const passwordSchema = z.object({
         .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
         .regex(/[0-9]/, "Password must contain at least one number"),
 })
+
+const accountTypeSchema = z.object({ account_type: z.enum(["SINGLE", "AGENCY"]) })
 
 export async function getSettingsController(req: Request, res: Response): Promise<void> {
     try {
@@ -56,5 +58,20 @@ export async function updatePasswordController(req: Request, res: Response): Pro
             500
 
         res.status(statusCode).json({ error: message })
+    }
+}
+
+export async function updateAccountTypeController(req: Request, res: Response): Promise<void> {
+    const parsed = accountTypeSchema.safeParse(req.body)
+    if (!parsed.success) {
+        res.status(400).json({ error: "account_type must be SINGLE or AGENCY" })
+        return
+    }
+    try {
+        const { user: { id: userId } } = req as AuthenticatedRequest
+        res.status(200).json(await updateAccountType(userId, parsed.data.account_type))
+    } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to update account type"
+        res.status(message === "User not found" ? 404 : 409).json({ error: message })
     }
 }

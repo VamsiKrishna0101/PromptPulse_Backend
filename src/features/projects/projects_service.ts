@@ -1,13 +1,19 @@
 import prisma from "../../lib/prisma"
-import { getAccessibleUserIds } from '../../lib/agency_access'
+import { getAccessibleUserIds, getAssignedProjectIds } from '../../lib/agency_access'
 
 export async function getUserProjects(user_id: string) {
     // For agency accounts this returns own projects + all active client projects.
-    // For single accounts this is just [user_id] so behaviour is unchanged.
+    // For clients this includes projects explicitly assigned to them.
     const accessibleIds = await getAccessibleUserIds(user_id)
+    const assignedProjectIds = await getAssignedProjectIds(user_id)
 
     return prisma.project.findMany({
-        where: { user_id: { in: accessibleIds } },
+        where: {
+            OR: [
+                { user_id: { in: accessibleIds } },
+                { id: { in: assignedProjectIds } }
+            ]
+        },
         orderBy: { created_at: "asc" },
         include: {
             prompts: {

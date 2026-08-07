@@ -329,9 +329,17 @@ export async function getPlanQuota(userId: string): Promise<PlanQuotaResponse> {
 // PAYG: no project or prompt limits — always allow
 export async function assertCanCreateProjectWithPrompts(userId: string, promptCount: number) {
     const access = await getEffectivePlanAccess(userId)
+    const credits = await getCreditBalance(userId)
+    if (access.trial.expired && access.effective_plan === Plan.FREE && credits.remaining <= 0) {
+        throw new Error("Your free trial has ended. Please upgrade or add credits to create new brand workspaces.")
+    }
     if (access.trial.active) {
+        const projectCount = await prisma.project.count({ where: { user_id: userId } })
+        if (projectCount >= 1) {
+            throw new Error("Your Free Trial includes 1 Brand Workspace. Upgrade or add credits to manage multiple brands.")
+        }
         const used = await prisma.prompt.count({ where: { project: { user_id: userId }, is_active: true, status: "ACTIVE" } })
-        if (used + promptCount > 5) throw new Error("Your free trial includes up to 5 prompts. Add a plan or credits to continue.")
+        if (used + promptCount > 10) throw new Error("Your free trial includes up to 10 prompts. Add a plan or credits to continue.")
     }
     return { allowed: true }
 }
@@ -339,9 +347,13 @@ export async function assertCanCreateProjectWithPrompts(userId: string, promptCo
 // PAYG: no prompt limits — always allow
 export async function assertCanCreatePrompts(userId: string, promptCount = 1) {
     const access = await getEffectivePlanAccess(userId)
+    const credits = await getCreditBalance(userId)
+    if (access.trial.expired && access.effective_plan === Plan.FREE && credits.remaining <= 0) {
+        throw new Error("Your free trial has ended. Please upgrade or add credits to add more prompts.")
+    }
     if (access.trial.active) {
         const used = await prisma.prompt.count({ where: { project: { user_id: userId }, is_active: true, status: "ACTIVE" } })
-        if (used + promptCount > 5) throw new Error("Your free trial includes up to 5 prompts. Add a plan or credits to continue.")
+        if (used + promptCount > 10) throw new Error("Your free trial includes up to 10 prompts. Add a plan or credits to continue.")
     }
     return { allowed: true }
 }
@@ -407,7 +419,20 @@ export async function assertCanAddCompetitors(_userId: string, _count: number) {
 }
 
 export async function canRunRefresh(userId: string, projectId?: string): Promise<LimitCheckResponse> {
-    const user = await prisma.user.findUnique({ where: { id: userId }, select: { plan: true } })
+    const access = await getEffectivePlanAccess(userId)
+    const credits = await getCreditBalance(userId)
+
+    // If free trial has ended and user has no paid subscription or remaining credits, block runs
+    if ((access.trial.expired || (!access.trial.active && access.effective_plan === Plan.FREE)) && credits.remaining <= 0) {
+        return buildCheck(
+            "refresh",
+            Plan.FREE,
+            "daily",
+            0,
+            false,
+            "Your free trial has ended. Please upgrade or add credits to continue automated prompt runs."
+        )
+    }
 
     if (projectId) {
         const used = await prisma.run.count({
@@ -418,10 +443,10 @@ export async function canRunRefresh(userId: string, projectId?: string): Promise
             },
         })
         const allowed = used < 1
-        return buildCheck("refresh", (user?.plan ?? "FREE") as Plan, "daily", used, allowed, allowed ? undefined : "This project already refreshed today.")
+        return buildCheck("refresh", access.effective_plan, "daily", used, allowed, allowed ? undefined : "This project already refreshed today.")
     }
 
-    return buildCheck("refresh", (user?.plan ?? "FREE") as Plan, "daily", 0, true)
+    return buildCheck("refresh", access.effective_plan, "daily", 0, true)
 }
 
 export async function canUseSara(userId: string): Promise<LimitCheckResponse> {

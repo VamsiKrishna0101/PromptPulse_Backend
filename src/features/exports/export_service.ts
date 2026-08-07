@@ -1017,113 +1017,266 @@ async function buildGeoArticlePdfKit(
         doc.on("error", reject)
 
         const W = doc.page.width
-        const margin = 40
+        const H = doc.page.height
+        const margin = 42
+        const contentW = W - margin * 2
 
-        // Header
-        doc.rect(0, 0, W, 88).fill(PDF.navy)
-        doc.fillColor(PDF.blue).fontSize(9).font("Helvetica-Bold")
-        doc.text(brandName.toUpperCase() + " · GEO ARTICLE", margin, 20, { characterSpacing: 2 })
-        doc.fillColor(PDF.white).fontSize(20).font("Helvetica-Bold")
-        doc.text(article.title ?? brief.recommended_article.title, margin, 34, { height: 24, ellipsis: true })
-        
-        doc.fillColor("#94A3B8").fontSize(9).font("Helvetica")
-        doc.text(article.meta_description ?? brief.recommended_article.priority_reason, margin, 62, { height: 12, ellipsis: true })
-        
+        // Top Accent Bar
+        doc.rect(0, 0, W, 4).fill("#D97706")
+
+        // Header Background
+        doc.rect(0, 4, W, 96).fill("#0F172A")
+
+        // Eyebrow
+        doc.fillColor("#D97706").fontSize(8.5).font("Helvetica-Bold")
+        doc.text(`${brandName.toUpperCase()} · AI VISIBILITY INTELLIGENCE & GEO CONTENT BRIEF`, margin, 18, { characterSpacing: 1.5 })
+
+        // Title
+        const mainTitle = article.title ?? brief.recommended_article.title
+        doc.fillColor("#FFFFFF").fontSize(16).font("Helvetica-Bold")
+        doc.text(mainTitle, margin, 32, { width: contentW - 90, height: 38, ellipsis: true })
+
+        // Subtitle / Meta description
+        const subDesc = article.meta_description ?? brief.recommended_article.priority_reason
+        if (subDesc) {
+            doc.fillColor("#94A3B8").fontSize(8.5).font("Helvetica")
+            doc.text(subDesc, margin, 72, { width: contentW - 90, height: 20, ellipsis: true })
+        }
+
+        // Date
         const dateStr = fmtDate(new Date())
-        doc.fillColor("#64748B").fontSize(8.5).font("Helvetica")
-        doc.text(dateStr, W - margin - 120, 20, { width: 120, align: "right" })
+        doc.fillColor("#64748B").fontSize(8).font("Helvetica")
+        doc.text(dateStr, W - margin - 120, 18, { width: 120, align: "right" })
 
         // Action badge
-        const action = brief.recommended_article.action
-        const badgeColor = action === "CREATE" ? "#10B981" : action === "REFRESH" ? "#F59E0B" : "#94A3B8"
-        doc.roundedRect(W - margin - 80, 32, 80, 16, 4).fill("#1A3A5C")
-        doc.fillColor(badgeColor).fontSize(8).font("Helvetica-Bold")
-        doc.text(action, W - margin - 78, 36, { width: 76, align: "center" })
+        const action = brief.recommended_article?.action ?? "CREATE"
+        const badgeBg = action === "CREATE" ? "#065F46" : action === "REFRESH" ? "#92400E" : "#334155"
+        const badgeText = action === "CREATE" ? "#34D399" : action === "REFRESH" ? "#FBBF24" : "#CBD5E1"
+        doc.roundedRect(W - margin - 85, 34, 85, 18, 4).fill(badgeBg)
+        doc.fillColor(badgeText).fontSize(8).font("Helvetica-Bold")
+        doc.text(action + " PAGE", W - margin - 85, 39, { width: 85, align: "center", characterSpacing: 1 })
 
-        let y = 110
+        let y = 114
 
-        // KPIs
-        const m = brief.metrics
+        // ─── Executive KPI Cards ──────────────────────────────────────────
+        const m = brief.metrics ?? { own_visibility: 0, evidence_count: 0 }
+        const gapVal = 100 - (m.own_visibility ?? 0)
         const kpis = [
-            { label: "Visibility", value: `${m.own_visibility}%` },
-            { label: "Position", value: m.own_avg_position ? `#${m.own_avg_position}` : "—" },
-            { label: "Sentiment", value: m.own_avg_sentiment ?? "—" },
-            { label: "Evidence", value: String(m.evidence_count) }
+            { label: "AI VISIBILITY", value: `${m.own_visibility}%`, color: "#059669", bg: "#ECFDF5", border: "#A7F3D0" },
+            { label: "COMPETITOR GAP", value: `${gapVal.toFixed(1)}%`, color: "#D97706", bg: "#FFFBEB", border: "#FDE68A" },
+            { label: "AVG POSITION", value: m.own_avg_position ? `#${m.own_avg_position}` : "—", color: "#0284C7", bg: "#F0F9FF", border: "#BAE6FD" },
+            { label: "EVIDENCE POINTS", value: String(m.evidence_count), color: "#4F46E5", bg: "#EEF2FF", border: "#C7D2FE" }
         ]
 
-        const kpiW = (W - margin * 2 - (12 * 3)) / 4
+        const kpiGap = 10
+        const kpiW = (contentW - kpiGap * 3) / 4
         kpis.forEach((kpi, i) => {
-            const kX = margin + i * (kpiW + 12)
-            doc.roundedRect(kX, y, kpiW, 46, 6).lineWidth(1).strokeColor(PDF.border).stroke()
-            doc.fillColor(PDF.muted).fontSize(8).font("Helvetica-Bold")
-            doc.text(kpi.label.toUpperCase(), kX + 12, y + 10, { characterSpacing: 1 })
-            doc.fillColor(PDF.text).fontSize(16).font("Helvetica-Bold")
-            doc.text(kpi.value, kX + 12, y + 22)
+            const kX = margin + i * (kpiW + kpiGap)
+            doc.roundedRect(kX, y, kpiW, 46, 5).fill(kpi.bg)
+            doc.roundedRect(kX, y, kpiW, 46, 5).lineWidth(1).strokeColor(kpi.border).stroke()
+
+            doc.fillColor("#64748B").fontSize(7.5).font("Helvetica-Bold")
+            doc.text(kpi.label, kX + 10, y + 8, { characterSpacing: 0.8 })
+
+            doc.fillColor(kpi.color).fontSize(15).font("Helvetica-Bold")
+            doc.text(kpi.value, kX + 10, y + 21)
         })
 
-        y += 66
+        y += 58
 
-        // Article body (very simple parsing)
+        // ─── Target Query Context Box ────────────────────────────────────
+        if (brief.target_prompt?.text) {
+            doc.roundedRect(margin, y, contentW, 36, 5).fill("#F8FAFC")
+            doc.roundedRect(margin, y, contentW, 36, 5).lineWidth(1).strokeColor("#E2E8F0").stroke()
+
+            doc.fillColor("#D97706").fontSize(7.5).font("Helvetica-Bold")
+            doc.text("TARGET BUYER QUERY", margin + 12, y + 7, { characterSpacing: 1 })
+
+            doc.fillColor("#0F172A").fontSize(9.5).font("Helvetica-Bold")
+            doc.text(`"${brief.target_prompt.text}"`, margin + 12, y + 18, { width: contentW - 24, ellipsis: true })
+
+            y += 46
+        }
+
+        // Helper to check page break
+        function ensurePageSpace(neededHeight: number) {
+            if (y + neededHeight > H - 55) {
+                doc.addPage()
+                // Mini page header
+                doc.rect(0, 0, W, 22).fill("#0F172A")
+                doc.fillColor("#94A3B8").fontSize(7.5).font("Helvetica-Bold")
+                doc.text(`${brandName.toUpperCase()} · GEO ARTICLE DRAFT`, margin, 7, { characterSpacing: 1 })
+                doc.fillColor("#64748B").fontSize(7.5).font("Helvetica")
+                doc.text(dateStr, W - margin - 100, 7, { width: 100, align: "right" })
+                y = margin + 8
+            }
+        }
+
+        // ─── Markdown Content Rendering with Table & Callout Support ─────
         if (article.article_markdown) {
-            const lines = article.article_markdown.split("\n")
-            for (const line of lines) {
-                if (y > doc.page.height - 80) { doc.addPage(); y = margin }
-                if (!line.trim()) { y += 6; continue }
+            const rawLines = article.article_markdown.split("\n")
+            let tableBuffer: string[] = []
 
+            function flushTable() {
+                if (tableBuffer.length === 0) return
+                const rows = tableBuffer
+                    .map(r => r.split("|").map(cell => cell.trim()).filter((_, idx, arr) => idx > 0 && idx < arr.length - 1))
+                    .filter(r => r.length > 0 && !r.every(c => /^[-:]+$/.test(c)))
+
+                tableBuffer = []
+                if (rows.length === 0) return
+
+                const colCount = Math.max(...rows.map(r => r.length))
+                if (colCount === 0) return
+                const colW = contentW / colCount
+                const rowH = 20
+
+                ensurePageSpace(rows.length * rowH + 16)
+                y += 6
+
+                rows.forEach((row, rowIndex) => {
+                    const isHeader = rowIndex === 0
+                    ensurePageSpace(rowH)
+
+                    if (isHeader) {
+                        doc.rect(margin, y, contentW, rowH).fill("#0F172A")
+                    } else {
+                        doc.rect(margin, y, contentW, rowH).fill(rowIndex % 2 === 0 ? "#FFFFFF" : "#F8FAFC")
+                        doc.rect(margin, y, contentW, rowH).lineWidth(0.5).strokeColor("#E2E8F0").stroke()
+                    }
+
+                    row.forEach((cellText, colIndex) => {
+                        const cellX = margin + colIndex * colW
+                        doc.fillColor(isHeader ? "#FFFFFF" : "#1E293B")
+                           .fontSize(isHeader ? 8.5 : 8.5)
+                           .font(isHeader ? "Helvetica-Bold" : "Helvetica")
+                        doc.text(cellText.replace(/\*\*/g, ""), cellX + 6, y + 5, { width: colW - 12, ellipsis: true })
+                    })
+
+                    y += rowH
+                })
+
+                y += 10
+            }
+
+            for (let i = 0; i < rawLines.length; i++) {
+                const line = rawLines[i].trim()
+
+                // Table parsing
+                if (line.startsWith("|")) {
+                    tableBuffer.push(line)
+                    continue
+                } else if (tableBuffer.length > 0) {
+                    flushTable()
+                }
+
+                if (!line) {
+                    y += 4
+                    continue
+                }
+
+                // Callouts: [NEEDS DATA: ...]
+                if (line.includes("[NEEDS DATA:")) {
+                    const cleanCallout = line.replace(/\[NEEDS DATA:\s*/i, "").replace(/\]/g, "")
+                    ensurePageSpace(46)
+                    doc.roundedRect(margin, y, contentW, 40, 4).fill("#FEF3C7")
+                    doc.roundedRect(margin, y, contentW, 40, 4).lineWidth(1).strokeColor("#F59E0B").stroke()
+
+                    doc.fillColor("#92400E").fontSize(7.5).font("Helvetica-Bold")
+                    doc.text("EDITORIAL REVIEW REQUIRED", margin + 10, y + 7, { characterSpacing: 1 })
+
+                    doc.fillColor("#78350F").fontSize(8.5).font("Helvetica")
+                    doc.text(cleanCallout, margin + 10, y + 19, { width: contentW - 20, height: 18, ellipsis: true })
+
+                    y += 48
+                    continue
+                }
+
+                // Headings
                 if (line.startsWith("# ")) {
-                    doc.fillColor(PDF.text).fontSize(16).font("Helvetica-Bold")
-                    doc.text(line.replace(/^#+ /, ""), margin, y)
-                    y += 24
-                } else if (line.startsWith("## ")) {
+                    ensurePageSpace(32)
                     y += 8
-                    doc.fillColor(PDF.text).fontSize(14).font("Helvetica-Bold")
-                    doc.text(line.replace(/^#+ /, ""), margin, y)
-                    y += 18
-                    doc.moveTo(margin, y - 4).lineTo(W - margin, y - 4).lineWidth(1).strokeColor(PDF.border).stroke()
-                } else if (line.startsWith("### ")) {
-                    doc.fillColor(PDF.text).fontSize(12).font("Helvetica-Bold")
-                    doc.text(line.replace(/^#+ /, ""), margin, y)
+                    doc.fillColor("#0F172A").fontSize(14).font("Helvetica-Bold")
+                    doc.text(line.replace(/^#+ /, ""), margin, y, { width: contentW })
+                    y += 20
+                } else if (line.startsWith("## ")) {
+                    ensurePageSpace(30)
+                    y += 12
+                    doc.fillColor("#0F172A").fontSize(12).font("Helvetica-Bold")
+                    doc.text(line.replace(/^#+ /, ""), margin, y, { width: contentW })
                     y += 16
+                    doc.moveTo(margin, y).lineTo(W - margin, y).lineWidth(0.75).strokeColor("#E2E8F0").stroke()
+                    y += 8
+                } else if (line.startsWith("### ")) {
+                    ensurePageSpace(24)
+                    y += 8
+                    doc.fillColor("#1E293B").fontSize(10.5).font("Helvetica-Bold")
+                    doc.text(line.replace(/^#+ /, ""), margin, y, { width: contentW })
+                    y += 15
                 } else if (line.startsWith("- ") || line.startsWith("* ")) {
-                    doc.fillColor(PDF.text).fontSize(11).font("Helvetica")
-                    doc.text("• " + line.replace(/^[-*] /, "").replace(/\*\*/g, ""), margin + 12, y)
-                    y += 14
-                } else if (line.startsWith("|")) {
-                    // skip tables for simplicity in pdf
-                } else {
-                    doc.fillColor("#3f3f46").fontSize(11).font("Helvetica")
-                    const text = line.replace(/\*\*/g, "").replace(/`/g, "")
-                    const height = doc.heightOfString(text, { width: W - margin * 2 })
-                    doc.text(text, margin, y, { width: W - margin * 2 })
+                    const bulletText = line.replace(/^[-*] /, "").replace(/\*\*/g, "")
+                    const height = doc.heightOfString(bulletText, { width: contentW - 18 })
+                    ensurePageSpace(height + 4)
+                    doc.fillColor("#0F172A").fontSize(9).font("Helvetica-Bold")
+                    doc.text("•", margin + 4, y)
+                    doc.fillColor("#334155").fontSize(9).font("Helvetica")
+                    doc.text(bulletText, margin + 16, y, { width: contentW - 18, lineGap: 2.5 })
                     y += height + 4
+                } else {
+                    const text = line.replace(/\*\*/g, "").replace(/`/g, "")
+                    const height = doc.heightOfString(text, { width: contentW })
+                    ensurePageSpace(height + 6)
+                    doc.fillColor("#334155").fontSize(9.5).font("Helvetica")
+                    doc.text(text, margin, y, { width: contentW, lineGap: 3.5 })
+                    y += height + 6
                 }
             }
-        }
 
-        // FAQs
-        if (article.faq && article.faq.length > 0) {
-            if (y > doc.page.height - 100) { doc.addPage(); y = margin }
-            y += 16
-            doc.fillColor(PDF.text).fontSize(14).font("Helvetica-Bold")
-            doc.text("Frequently Asked Questions", margin, y)
-            y += 20
-
-            for (const f of article.faq) {
-                if (y > doc.page.height - 60) { doc.addPage(); y = margin }
-                doc.roundedRect(margin, y, W - margin * 2, 46, 6).lineWidth(1).strokeColor(PDF.border).stroke()
-                doc.fillColor(PDF.text).fontSize(11).font("Helvetica-Bold")
-                doc.text(f.question, margin + 12, y + 10, { width: W - margin * 2 - 24, ellipsis: true, height: 14 })
-                doc.fillColor("#52525b").fontSize(11).font("Helvetica")
-                doc.text(f.answer, margin + 12, y + 26, { width: W - margin * 2 - 24, ellipsis: true, height: 14 })
-                y += 54
+            if (tableBuffer.length > 0) {
+                flushTable()
             }
         }
 
-        // Footers
+        // ─── FAQ Section ─────────────────────────────────────────────────
+        if (article.faq && article.faq.length > 0) {
+            ensurePageSpace(45)
+            y += 14
+            doc.fillColor("#0F172A").fontSize(12).font("Helvetica-Bold")
+            doc.text("Frequently Asked Questions (FAQ Schema)", margin, y)
+            y += 16
+            doc.moveTo(margin, y).lineTo(W - margin, y).lineWidth(0.75).strokeColor("#E2E8F0").stroke()
+            y += 10
+
+            for (const f of article.faq) {
+                const qH = doc.heightOfString(f.question, { width: contentW - 24 })
+                const aH = doc.heightOfString(f.answer, { width: contentW - 24 })
+                const totalBoxH = qH + aH + 20
+
+                ensurePageSpace(totalBoxH + 6)
+                doc.roundedRect(margin, y, contentW, totalBoxH, 5).fill("#F8FAFC")
+                doc.roundedRect(margin, y, contentW, totalBoxH, 5).lineWidth(1).strokeColor("#E2E8F0").stroke()
+
+                doc.fillColor("#0F172A").fontSize(9).font("Helvetica-Bold")
+                doc.text(f.question, margin + 12, y + 8, { width: contentW - 24 })
+
+                doc.fillColor("#475569").fontSize(8.5).font("Helvetica")
+                doc.text(f.answer, margin + 12, y + 8 + qH + 4, { width: contentW - 24, lineGap: 2 })
+
+                y += totalBoxH + 8
+            }
+        }
+
+        // ─── Footers across all pages ────────────────────────────────────
         const total = (doc as any).bufferedPageRange().count
         for (let i = 0; i < total; i++) {
             doc.switchToPage(i)
-            renderFooter(doc, brandName, i + 1, total, W, margin)
+            // Bottom rule
+            doc.moveTo(margin, H - 36).lineTo(W - margin, H - 36).lineWidth(0.5).strokeColor("#E2E8F0").stroke()
+
+            // Footer text
+            doc.fillColor("#94A3B8").fontSize(8).font("Helvetica")
+            doc.text(`${brandName} · GEO Intelligence & Content Brief · Confidential`, margin, H - 28)
+            doc.text(`Page ${i + 1} of ${total}`, W - margin - 80, H - 28, { width: 80, align: "right" })
         }
 
         doc.end()

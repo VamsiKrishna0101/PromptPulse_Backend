@@ -5,9 +5,11 @@
 
 import crypto from "crypto"
 import { processPaidRazorpayOrderFromWebhook } from "./razorpay_service"
+import { processRazorpaySubscriptionWebhook } from "./razorpay_subscription_service"
 
 interface RazorpayWebhookPayload {
     event: string
+    created_at?: number
     payload?: {
         payment?: {
             entity?: {
@@ -16,6 +18,19 @@ interface RazorpayWebhookPayload {
                 status: string
                 amount: number
                 currency: string
+            }
+        }
+        subscription?: {
+            entity?: {
+                id: string
+                plan_id: string
+                status: string
+                current_start?: number | null
+                current_end?: number | null
+                ended_at?: number | null
+                paid_count?: number
+                charge_at?: number | null
+                notes?: Record<string, string>
             }
         }
     }
@@ -34,9 +49,18 @@ export async function handleRazorpayWebhook(rawBody: Buffer, signature: string) 
     }
 
     const event = JSON.parse(rawBody.toString()) as RazorpayWebhookPayload
-    if (event.event !== "payment.captured") {
-        return { status: "ignored", event: event.event }
+    if (event.event.startsWith("subscription.")) {
+        const subscription = event.payload?.subscription?.entity
+        if (!subscription) throw new Error("Malformed subscription webhook payload")
+        return processRazorpaySubscriptionWebhook({
+            eventType: event.event,
+            createdAt: event.created_at,
+            subscription,
+            paymentId: event.payload?.payment?.entity?.id ?? null,
+        })
     }
+
+    if (event.event !== "payment.captured") return { status: "ignored", event: event.event }
 
     const entity = event.payload?.payment?.entity
     if (!entity) throw new Error("Malformed webhook payload")

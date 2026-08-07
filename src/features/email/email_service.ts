@@ -1,5 +1,6 @@
 import axios from "axios"
 import https from "https"
+import { SESClient, SendEmailCommand, SendRawEmailCommand } from "@aws-sdk/client-ses"
 
 type SendEmailInput = {
     to: string
@@ -24,10 +25,52 @@ type BrevoSendResponse = {
     messageId?: string
 }
 
-export async function sendEmail(input: SendEmailInput) {
+export async function sendEmail(input: SendEmailInput & { awsConfig?: { region: string, accessKey: string, secretKey: string, source: string } }) {
     const provider = process.env.EMAIL_PROVIDER ?? "brevo"
-    if (provider !== "brevo") {
+    if (provider !== "brevo" && provider !== "ses") {
         throw new Error(`Unsupported email provider: ${provider}`)
+    }
+
+    if (provider === "ses") {
+        const region = input.awsConfig?.region || process.env.AWS_SES_REGION || "ap-south-1"
+        const accessKeyId = input.awsConfig?.accessKey || process.env.AWS_ACCESS_KEY_ID
+        const secretAccessKey = input.awsConfig?.secretKey || process.env.AWS_SECRET_ACCESS_KEY
+        
+        if (!accessKeyId || !secretAccessKey) {
+            throw new Error("AWS SES credentials not configured")
+        }
+
+        const sesClient = new SESClient({
+            region,
+            credentials: {
+                accessKeyId,
+                secretAccessKey,
+            }
+        })
+
+        const source = input.awsConfig?.source || `${process.env.EMAIL_FROM_NAME ?? "PromptPulse"} <${process.env.EMAIL_FROM_ADDRESS ?? "noreply@promptpulse.online"}>`
+
+        const command = new SendEmailCommand({
+            Source: source,
+            Destination: {
+                ToAddresses: [input.to]
+            },
+            Message: {
+                Subject: { Data: input.subject, Charset: "UTF-8" },
+                Body: {
+                    Html: { Data: input.html, Charset: "UTF-8" },
+                    ...(input.text ? { Text: { Data: input.text, Charset: "UTF-8" } } : {})
+                }
+            }
+        })
+
+        try {
+            const response = await sesClient.send(command)
+            return { messageId: response.MessageId }
+        } catch (error) {
+            console.error("AWS SES email send failed", error)
+            throw error
+        }
     }
 
     const apiKey = process.env.BREVO_API_KEY

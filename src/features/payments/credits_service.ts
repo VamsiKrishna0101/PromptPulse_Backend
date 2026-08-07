@@ -4,15 +4,39 @@
  */
 
 import prisma from "../../lib/prisma"
-import { CREDIT_ACTIONS, LOW_BALANCE_THRESHOLD, type CreditAction } from "./credits_config"
+import { AccountType } from "@prisma/client"
+import { CREDIT_ACTIONS, LOW_BALANCE_THRESHOLD, creditPolicyFor, signupBonusFor, type CreditAction } from "./credits_config"
+
+export async function getBillingAccountContext(userId: string): Promise<{ billingUserId: string; accountType: AccountType }> {
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { account_type: true } })
+    if (user?.account_type === AccountType.AGENCY) return { billingUserId: userId, accountType: AccountType.AGENCY }
+    const membership = await prisma.agencyMembership.findFirst({ where: { member_user_id: userId, status: "ACTIVE" }, select: { agency_user_id: true } })
+    const clientLink = membership ? null : await prisma.agencyClientLink.findFirst({ where: { client_user_id: userId, status: "ACTIVE" }, select: { agency_user_id: true } })
+    const billingUserId = membership?.agency_user_id ?? clientLink?.agency_user_id ?? userId
+    if (billingUserId === userId) return { billingUserId, accountType: user?.account_type ?? AccountType.SINGLE }
+    const owner = await prisma.user.findUnique({ where: { id: billingUserId }, select: { account_type: true } })
+    return { billingUserId, accountType: owner?.account_type ?? AccountType.AGENCY }
+}
 
 export async function resolveBillingUserId(userId: string): Promise<string> {
-    const agency = await prisma.user.findUnique({ where: { id: userId }, select: { account_type: true } })
-    if (agency?.account_type === "AGENCY") return userId
-    const membership = await prisma.agencyMembership.findFirst({ where: { member_user_id: userId, status: "ACTIVE" }, select: { agency_user_id: true } })
-    if (membership) return membership.agency_user_id
-    const clientLink = await prisma.agencyClientLink.findFirst({ where: { client_user_id: userId, status: "ACTIVE" }, select: { agency_user_id: true } })
-    return clientLink?.agency_user_id ?? userId
+    return (await getBillingAccountContext(userId)).billingUserId
+}
+
+export async function getPromptRunCreditCost(userId: string): Promise<number> {
+    const { accountType } = await getBillingAccountContext(userId)
+    return creditPolicyFor(accountType).prompt_run
+}
+
+export async function getSiteAuditCreditCost(userId: string, maxPages: number): Promise<number> {
+    const { accountType } = await getBillingAccountContext(userId)
+    const rates = creditPolicyFor(accountType).site_audit
+    if (maxPages <= 25) return rates.quick
+    if (maxPages <= 100) return rates.standard
+    return rates.deep
+}
+
+async function getActionCreditCost(userId: string, action: CreditAction): Promise<number> {
+    return action === "PROMPT_RUN" ? getPromptRunCreditCost(userId) : CREDIT_ACTIONS[action]
 }
 
 export async function expireCreditBuckets(userId: string) {
@@ -58,7 +82,7 @@ export async function getCreditBalance(userId: string): Promise<number> {
  * Throws InsufficientCreditsError if not.
  */
 export async function assertCredits(userId: string, action: CreditAction): Promise<void> {
-    const cost    = CREDIT_ACTIONS[action]
+    const cost    = await getActionCreditCost(userId, action)
     const balance = await getCreditBalance(userId)
     if (balance < cost) throw new InsufficientCreditsError(cost, balance)
 }
@@ -73,7 +97,7 @@ export async function deductCredits(
     description?: string,
     metadata?:   Record<string, unknown>,
 ): Promise<number> {
-    const cost    = CREDIT_ACTIONS[action]
+    const cost    = await getActionCreditCost(userId, action)
     const billingUserId = await resolveBillingUserId(userId)
     const balance = await getCreditBalance(billingUserId)
 
@@ -145,7 +169,7 @@ export async function ensureSignupBonusCredits(userId: string): Promise<number> 
 
     const user = await prisma.user.findUnique({
         where: { id: billingUserId },
-        select: { credits_balance: true, is_verified: true },
+        select: { credits_balance: true, is_verified: true, account_type: true },
     })
 
     if (!user) return 0
@@ -162,11 +186,12 @@ export async function ensureSignupBonusCredits(userId: string): Promise<number> 
     if (existingBonus) return user.credits_balance
     if (user.credits_balance > 0) return user.credits_balance
 
+    const signupBonus = signupBonusFor(user.account_type)
     return awardCredits(
         billingUserId,
-        CREDIT_ACTIONS.SIGNUP_BONUS,
+        signupBonus,
         "SIGNUP_BONUS",
-        `${CREDIT_ACTIONS.SIGNUP_BONUS} free trial credits`,
+        `${signupBonus} free trial credits`,
         { source: "trial_onboarding_guard" },
     )
 }

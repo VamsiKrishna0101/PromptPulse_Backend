@@ -8,7 +8,8 @@ import crypto from "crypto"
 import { Plan, SubscriptionStatus, type RazorpayOrder } from "@prisma/client"
 import prisma from "../../lib/prisma"
 import { getRazorpayClient } from "./razorpay_config"
-import { getCreditPack, getCustomCreditPack } from "./credits_config"
+import { AGENCY_CREDIT_PACKS, getCreditPack, getCustomCreditPack } from "./credits_config"
+import { getBillingAudience } from "./razorpay_subscription_service"
 import { PLAN_LIMITS } from "../subscription/plan_config"
 import { resolveBillingUserId } from "./credits_service"
 
@@ -75,6 +76,7 @@ async function markOrderPaidAndApplyBenefits(order: RazorpayOrder, razorpayPayme
         await tx.creditTransaction.create({
             data: {
                 user_id: order.user_id,
+                idempotency_key: `${action}:${order.razorpay_order_id}`,
                 amount: order.credits_to_award,
                 action,
                 description,
@@ -176,8 +178,15 @@ export async function createRazorpayOrder(userId: string, packId?: string, custo
         }
     }
 
-    const pack = packId ? getCreditPack(packId) : getCustomCreditPack(customCredits ?? 0)
+    const audience = await getBillingAudience(userId)
+    const pack = packId ? getCreditPack(packId) : getCustomCreditPack(customCredits ?? 0, audience)
     if (!pack) throw new Error("Invalid credit pack")
+    if (AGENCY_CREDIT_PACKS.some(item => item.id === pack.id) && audience !== "AGENCY") {
+        throw new Error("Agency credit packs require an agency account")
+    }
+    if (CREDIT_PACKS.some(item => item.id === pack.id) && audience === "AGENCY") {
+        throw new Error("Choose an agency credit pack for this shared wallet")
+    }
 
     const razorpay = getRazorpayClient()
     const idempotencyKey = `topup:${userId}:${packId ?? pack.id}:${Date.now()}`

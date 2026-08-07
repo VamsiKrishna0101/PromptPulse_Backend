@@ -7,7 +7,8 @@ import {
     VisibilityRunStatus,
 } from "@prisma/client"
 import prisma from "../../lib/prisma"
-import { spendCredits } from "../credits/credits_service"
+import { refundCredits, spendCredits } from "../credits/credits_service"
+import { getPromptRunCreditCost } from "../payments/credits_service"
 import { runPrompt } from "../dashboard/dashboard_service"
 import { buildGeoPromptText } from "../prompts/prompt_service"
 import { buildBrightDataInput, getScraperId } from "./brightdata/engine_registry"
@@ -306,18 +307,21 @@ async function completeBatchFromRecords(batch: BrightDataBatchWithItems, records
     const chargeableGroups = groupSuccessfulCandidatesByRun(candidates)
 
     for (const group of chargeableGroups) {
+        const unitCreditCost = await getPromptRunCreditCost(group.user_id)
+        const groupChargeKey = `brightdata-run:${group.run_id}:batch:${batch.id}:prompt-run:v2`
         try {
             await spendCredits({
                 userId: group.user_id,
-                amount: group.items.length,
+                amount: group.items.length * unitCreditCost,
                 action: "PROMPT_RUN",
                 description: `Daily run - ${group.items.length} successful AI checks`,
-                idempotencyKey: `brightdata-run:${group.run_id}:batch:${batch.id}:prompt-run`,
+                idempotencyKey: groupChargeKey,
                 metadata: {
                     run_id: group.run_id,
                     batch_id: batch.id,
                     source: "brightdata_batch",
                     successful_checks: group.items.length,
+                    unit_credit_cost: unitCreditCost,
                     engines: Array.from(new Set(group.items.map(candidate => candidate.item.scrape_job.engine))),
                     scrape_job_ids: group.items.map(candidate => candidate.item.scrape_job.id),
                 },
@@ -379,6 +383,14 @@ async function completeBatchFromRecords(batch: BrightDataBatchWithItems, records
                 completed += 1
             } catch (error) {
                 failed += 1
+                await refundCredits({
+                    userId: group.user_id,
+                    amount: unitCreditCost,
+                    action: "PROMPT_RUN",
+                    description: "Refund for AI result that could not be analyzed",
+                    idempotencyKey: `${groupChargeKey}:failed:${candidate.item.scrape_job.id}`,
+                    metadata: { run_id: group.run_id, scrape_job_id: candidate.item.scrape_job.id },
+                }).catch((refundError: unknown) => console.error("Could not refund failed AI analysis", refundError))
                 await markBatchItemFailed(candidate.item.id, candidate.item.scrape_job, normalizeErrorMessage(error))
             }
         }

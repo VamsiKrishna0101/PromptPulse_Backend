@@ -1,17 +1,21 @@
 import { Engine } from "@prisma/client"
 import { Request, Response } from "express"
 import { enqueueProjectRun, getScrapeRun } from "./scrape_orchestration_service"
-import { assertProjectAccess } from "../projects/project_access"
+import { assertProjectAccess, assertProjectMutationAccess } from "../projects/project_access"
 import type { AuthenticatedRequest } from "../../middleware/auth"
 import { isActiveScrapeEngine } from "./scrape_engine_policy"
 import { assertCanUseProjectEngines } from "../project_engines/project_engines_service"
 import prisma from "../../lib/prisma"
-import { ensureSignupBonusCredits, getCreditBalance } from "../payments/credits_service"
-import { CREDIT_COSTS } from "../subscription/plan_config"
+import { ensureSignupBonusCredits, getCreditBalance, getPromptRunCreditCost } from "../payments/credits_service"
 import { getProjectEngines } from "../project_engines/project_engines_service"
+import { isScrapingDisabled } from "./scrape_gate"
 
 export const enqueueProjectRunController = async (req: Request, res: Response): Promise<void> => {
     try {
+        if (isScrapingDisabled()) {
+            res.status(503).json({ error: "Scraping is temporarily disabled for all projects." })
+            return
+        }
         const { project_id, prompt_ids, engines, profile } = req.body
 
         if (!project_id) {
@@ -20,7 +24,7 @@ export const enqueueProjectRunController = async (req: Request, res: Response): 
         }
 
         const userId = (req as AuthenticatedRequest).user.id
-        await assertProjectAccess(project_id, userId)
+        await assertProjectMutationAccess(project_id, userId)
         const parsedEngines = Array.isArray(engines)
             ? engines.map((engine: string) => engine.toUpperCase()).filter((engine: string) => engine in Engine) as Engine[]
             : undefined
@@ -54,7 +58,8 @@ export const enqueueProjectRunController = async (req: Request, res: Response): 
         const requestedJobs = prompts.reduce((total, prompt) => total + 1 + prompt._count.geo_variants, 0) * engineCount
         await ensureSignupBonusCredits(userId)
         const availableCredits = await getCreditBalance(userId)
-        const requiredCredits = requestedJobs * CREDIT_COSTS.prompt_run
+        const unitCreditCost = await getPromptRunCreditCost(userId)
+        const requiredCredits = requestedJobs * unitCreditCost
         if (requiredCredits > availableCredits) {
             res.status(402).json({ error: `Not enough credits: this run needs ${requiredCredits}, but your wallet has ${availableCredits}.` })
             return

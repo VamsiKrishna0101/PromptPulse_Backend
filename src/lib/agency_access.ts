@@ -36,24 +36,45 @@ function notFound(code: NotFoundErrorCode): Error {
  * For an AGENCY account: [user_id, ...all ACTIVE linked client user_ids].
  */
 export async function getAccessibleUserIds(user_id: string): Promise<string[]> {
-    const links = await prisma.$queryRawUnsafe<{ client_user_id: string }[]>(
-        `SELECT client_user_id
-         FROM "AgencyClientLink"
-         WHERE agency_user_id = $1
-           AND status = 'ACTIVE'`,
-        user_id,
-    )
+    // 1. Direct active clients if caller is an agency owner
+    const links = await prisma.agencyClientLink.findMany({
+        where: { agency_user_id: user_id, status: "ACTIVE" },
+        select: { client_user_id: true },
+    })
     const clientIds = links.map(l => l.client_user_id)
-    const memberships = await prisma.$queryRawUnsafe<{ agency_user_id: string }[]>(
-        `SELECT agency_user_id FROM "AgencyMembership" WHERE member_user_id = $1 AND status = 'ACTIVE'`, user_id,
-    )
-    const agencyIds = memberships.map(m => m.agency_user_id)
-    const staffClientLinks = agencyIds.length
-        ? await prisma.$queryRawUnsafe<{ client_user_id: string }[]>(
-            `SELECT client_user_id FROM "AgencyClientLink" WHERE agency_user_id = ANY($1::text[]) AND status = 'ACTIVE'`, agencyIds,
-        )
+
+    // 2. Active agencies if caller is an agency team member / staff
+    const memberships = await prisma.agencyMembership.findMany({
+        where: { member_user_id: user_id, status: "ACTIVE" },
+        select: { agency_user_id: true },
+    })
+    const staffAgencyIds = memberships.map(m => m.agency_user_id)
+
+    // 3. Active clients for those agencies (staff access)
+    const staffClientLinks = staffAgencyIds.length
+        ? await prisma.agencyClientLink.findMany({
+            where: { agency_user_id: { in: staffAgencyIds }, status: "ACTIVE" },
+            select: { client_user_id: true },
+        })
         : []
-    return [...new Set([user_id, ...clientIds, ...staffClientLinks.map(l => l.client_user_id)])]
+
+    return [...new Set([
+        user_id,
+        ...clientIds,
+        ...staffAgencyIds,
+        ...staffClientLinks.map(l => l.client_user_id),
+    ])]
+}
+
+/**
+ * Returns specific project IDs assigned to this user as a client.
+ */
+export async function getAssignedProjectIds(client_user_id: string): Promise<string[]> {
+    const links = await prisma.agencyClientLink.findMany({
+        where: { client_user_id, status: "ACTIVE" },
+        select: { assigned_project_ids: true },
+    })
+    return [...new Set(links.flatMap(l => l.assigned_project_ids || []))]
 }
 
 /**
@@ -61,13 +82,10 @@ export async function getAccessibleUserIds(user_id: string): Promise<string[]> {
  * Returns an empty array for non-agency users.
  */
 export async function getAgencyClientIds(agency_user_id: string): Promise<string[]> {
-    const links = await prisma.$queryRawUnsafe<{ client_user_id: string }[]>(
-        `SELECT client_user_id
-         FROM "AgencyClientLink"
-         WHERE agency_user_id = $1
-           AND status = 'ACTIVE'`,
-        agency_user_id,
-    )
+    const links = await prisma.agencyClientLink.findMany({
+        where: { agency_user_id, status: "ACTIVE" },
+        select: { client_user_id: true },
+    })
     return links.map(l => l.client_user_id)
 }
 
@@ -75,8 +93,16 @@ export async function getAgencyClientIds(agency_user_id: string): Promise<string
 
 export async function assertAgencyProjectAccess(project_id: string, user_id: string) {
     const accessibleUserIds = await getAccessibleUserIds(user_id)
+    const assignedProjectIds = await getAssignedProjectIds(user_id)
+
     const project = await prisma.project.findFirst({
-        where: { id: project_id, user_id: { in: accessibleUserIds } },
+        where: {
+            id: project_id,
+            OR: [
+                { user_id: { in: accessibleUserIds } },
+                { id: { in: assignedProjectIds } }
+            ]
+        },
         select: {
             id: true,
             brand_name: true,
@@ -96,8 +122,18 @@ export async function assertAgencyProjectAccess(project_id: string, user_id: str
 
 export async function assertAgencyCompetitorAccess(competitor_id: string, user_id: string) {
     const accessibleUserIds = await getAccessibleUserIds(user_id)
+    const assignedProjectIds = await getAssignedProjectIds(user_id)
+
     const competitor = await prisma.competitor.findFirst({
-        where: { id: competitor_id, project: { user_id: { in: accessibleUserIds } } },
+        where: {
+            id: competitor_id,
+            project: {
+                OR: [
+                    { user_id: { in: accessibleUserIds } },
+                    { id: { in: assignedProjectIds } }
+                ]
+            }
+        },
     })
 
     if (!competitor) throw notFound("COMPETITOR_NOT_FOUND")
@@ -108,8 +144,18 @@ export async function assertAgencyCompetitorAccess(competitor_id: string, user_i
 
 export async function assertAgencyRunAccess(run_id: string, user_id: string) {
     const accessibleUserIds = await getAccessibleUserIds(user_id)
+    const assignedProjectIds = await getAssignedProjectIds(user_id)
+
     const run = await prisma.run.findFirst({
-        where: { id: run_id, project: { user_id: { in: accessibleUserIds } } },
+        where: {
+            id: run_id,
+            project: {
+                OR: [
+                    { user_id: { in: accessibleUserIds } },
+                    { id: { in: assignedProjectIds } }
+                ]
+            }
+        },
     })
 
     if (!run) throw notFound("RUN_NOT_FOUND")
@@ -120,8 +166,18 @@ export async function assertAgencyRunAccess(run_id: string, user_id: string) {
 
 export async function assertAgencyPromptAccess(prompt_id: string, user_id: string) {
     const accessibleUserIds = await getAccessibleUserIds(user_id)
+    const assignedProjectIds = await getAssignedProjectIds(user_id)
+
     const prompt = await prisma.prompt.findFirst({
-        where: { id: prompt_id, project: { user_id: { in: accessibleUserIds } } },
+        where: {
+            id: prompt_id,
+            project: {
+                OR: [
+                    { user_id: { in: accessibleUserIds } },
+                    { id: { in: assignedProjectIds } }
+                ]
+            }
+        },
     })
 
     if (!prompt) throw notFound("PROMPT_NOT_FOUND")

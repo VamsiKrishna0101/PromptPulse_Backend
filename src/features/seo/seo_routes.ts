@@ -1,11 +1,16 @@
 import { Router } from "express"
-import { getLatestSeoAuditController, getSeoAuditController, listSeoAuditsController, runSeoAuditController } from "./seo_controller"
+import domainResearchRoutes from "./domain_research/domain_research_routes"
+import keywordResearchRoutes from "./keyword_research/keyword_research_routes"
+import backlinksRoutes from "./backlinks/backlinks_routes"
+import siteAuditRoutes from "./site_audit/site_audit_routes"
+import onboardingRoutes from "./onboarding/onboarding_routes"
 
 const router = Router()
 
-router.get("/:project_id/latest", getLatestSeoAuditController)
-router.get("/:project_id/history", listSeoAuditsController)
-router.get("/:project_id/audit/:audit_id", getSeoAuditController)
-router.post("/:project_id/run", runSeoAuditController)
+router.use("/domain-research", domainResearchRoutes)
+router.use("/keyword-research", keywordResearchRoutes)
+router.use("/backlinks", backlinksRoutes)
+router.use("/site-audit", siteAuditRoutes)
+router.use("/onboarding", onboardingRoutes)
 
 export default router

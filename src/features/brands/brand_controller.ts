@@ -1,6 +1,6 @@
 import { Request, Response } from 'express'
 import { getDiscoveredBrands, addCompetitor, getTrackedCompetitors, removeCompetitor } from './brand_service'
-import { assertCompetitorAccess, assertProjectAccess } from '../projects/project_access'
+import { assertCompetitorAccess, assertCompetitorMutationAccess, assertProjectAccess, assertProjectMutationAccess } from '../projects/project_access'
 import type { AuthenticatedRequest } from '../../middleware/auth'
 import type { DashboardFilters } from '../dashboard/dashboard_service'
 
@@ -46,7 +46,7 @@ export const addCompetitorController = async (req: Request, res: Response): Prom
             return
         }
         const userId = (req as AuthenticatedRequest).user.id
-        await assertProjectAccess(project_id, userId)
+        await assertProjectMutationAccess(project_id, userId)
         const competitor = await addCompetitor({ project_id, name, url, user_id: userId })
         res.status(201).json(competitor)
     } catch (error) {
@@ -88,7 +88,7 @@ export const removeCompetitorController = async (req: Request, res: Response): P
             res.status(400).json({ error: 'competitor_id is required' })
             return
         }
-        await assertCompetitorAccess(competitor_id, (req as AuthenticatedRequest).user.id)
+        await assertCompetitorMutationAccess(competitor_id, (req as AuthenticatedRequest).user.id)
         await removeCompetitor(competitor_id)
         res.status(200).json({ message: 'Competitor removed' })
     } catch (error) {

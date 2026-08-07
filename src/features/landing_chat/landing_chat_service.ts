@@ -36,7 +36,7 @@ function answerForIntent(intent: LandingChatIntent): LandingChatResponse {
     if (intent === "trial") {
         return {
             intent,
-            answer: "The trial is 7 days and does not require a credit card. It includes 105 credits, up to 5 prompts across 3 engines, 2 AI reports, and limited Sara access so you can see the product value before paying.",
+            answer: "The trial is 7 days and does not require a credit card. It includes enough account-adjusted credits to test up to 5 prompts across 3 engines, plus 2 AI reports and limited Sara access.",
             suggestions: ["What happens after trial?", "Can I book a demo?", "Which plan fits my team?"],
             cta: { label: "Start trial", href: "/signup" },
         }
@@ -63,7 +63,7 @@ function answerForIntent(intent: LandingChatIntent): LandingChatResponse {
     if (intent === "credits") {
         return {
             intent,
-            answer: "One credit covers one successful prompt on one AI engine. AI visibility reports use 25 credits, AI SEO quick scans use 3 credits, full AI SEO audits use 15 credits, content briefs use 15, and Reddit intelligence starts at 25. Failed provider requests and retries are not charged; agencies can top up a shared wallet from 1,000 credits.",
+            answer: "A successful AI-engine check uses 3 credits for an individual account or 2 credits from an agency's shared wallet. Saved SEO reports are free to reopen, live SEO refreshes are metered at a lower agency rate, and failed provider runs are refunded. Agencies can top up a shared wallet from 1,000 credits.",
             suggestions: ["Do exports use credits?", "Which plan has more credits?", "Can agencies share credits?"],
             cta: { label: "View plans", href: "/pricing" },
         }

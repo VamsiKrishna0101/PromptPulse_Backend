@@ -46,11 +46,15 @@ export async function getProfileData(userId: string) {
         throw new Error("User not found")
     }
 
+    const { getAgencyContext } = await import("../agency/agency_service")
+    const agencyContext = await getAgencyContext(userId).catch(() => null)
+
     return {
         user: {
             ...user,
             plan: "PAYG",
             effective_plan: "PAYG",
+            agency_role: agencyContext?.role || null,
         },
         projects,
         wallet: {

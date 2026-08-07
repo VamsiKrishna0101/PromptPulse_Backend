@@ -40,14 +40,14 @@ Do not summarize, rewrite, clean up, or format the displayed answer. Only return
 
 Source type classification:
 - YOU: The official domain of the tracked brand.
-- COMPETITOR: The official domain of any other brand/company mentioned as a competitor or alternative.
-- EDITORIAL: News sites, blogs, review sites, tech journalism (for example techcrunch.com, g2.com, forbes.com).
-- CORPORATE: General company websites that are not the tracked brand and not a competitor mentioned in the text.
-- UGC: User-generated content platforms (for example reddit.com, quora.com, trustpilot.com).
-- SOCIAL: Social media platforms (for example linkedin.com, twitter.com, youtube.com).
-- REFERENCE: Encyclopedias, dictionaries, and knowledge bases (for example wikipedia.org, wikidata.org).
-- INSTITUTIONAL: Government, academic, or non-profit domains (for example .gov, .edu).
-- OTHER: Anything else.
+- COMPETITOR: The official domain of any other brand/company mentioned as a genuine competitor or alternative.
+- EDITORIAL: News outlets, industry blogs, review articles, or content sites. Signal: domain contains words like "news", "journal", "media", "blog", "times", "review"; OR URL path contains /blog/, /news/, /article/, /best-, /vs-, /compare/, /alternatives/, /review/.
+- CORPORATE: Any company website that is not the tracked brand and not a competitor mentioned in the response. Default for product/SaaS homepages.
+- UGC: User-generated content platforms (for example reddit.com, quora.com, trustpilot.com, producthunt.com).
+- SOCIAL: Social media platforms (for example linkedin.com, twitter.com, x.com, youtube.com, instagram.com).
+- REFERENCE: Encyclopedias, knowledge bases, or software comparison platforms (for example wikipedia.org, investopedia.com, g2.com, capterra.com).
+- INSTITUTIONAL: Government or academic domains (for example .gov, .edu).
+- OTHER: Anything that does not clearly fit above.
 
 Page Citations are the source of truth for cited sources. Do not replace them with guessed official domains.
 For is_cited: true only if the URL/domain appears in Page Citations or is explicitly written in the raw response.
@@ -107,11 +107,11 @@ Instructions:
 - Do not infer or hallucinate source URLs from brand names. Brand official domains belong in brand_mentions[].domain, not sources[].
 - If the response mentions a subreddit or Quora topic, add reddit.com or quora.com to sources[] with source_type "UGC" and is_cited: true.
 - Calculate sentiment score strictly on this scale:
-  - 50 = Neutral/informational
-  - 60-75 = Positive
-  - 75-100 = Highly positive
-  - 25-40 = Negative
-  - 0-25 = Highly negative
+  - 0-20 = Highly negative (critical, dismissive, warns against)
+  - 21-40 = Negative (skeptical, unfavorable)
+  - 41-59 = Neutral / informational (mentioned without clear positive or negative framing)
+  - 60-79 = Positive (recommended, favorable comparison, praised)
+  - 80-100 = Highly positive (strongly endorsed, top pick, best-in-class)
 - Return strict valid JSON only. No markdown, no code fences, no commentary.
 
 {

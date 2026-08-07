@@ -6,6 +6,7 @@ import type { RegisterInput, RegisterResponse, LoginInput, LoginResponse } from 
 import { sendVerificationOtpEmail } from '../email/email_service'
 import { ensureFreeTrialSubscription, getEffectivePlanAccess } from '../subscription/entitlements'
 import { awardCredits } from '../payments/credits_service'
+import { signupBonusFor } from '../payments/credits_config'
 import jwt from 'jsonwebtoken'
 
 
@@ -50,8 +51,9 @@ export async function verifyUserOtp(email: string, otp: string) {
 
     // Award signup bonus credits — only if this is a fresh verification (balance is 0)
     const currentUser = await prisma.user.findUnique({ where: { id: updatedUser.id }, select: { credits_balance: true } })
+    const signupBonus = signupBonusFor(updatedUser.account_type)
     if ((currentUser?.credits_balance ?? 0) === 0) {
-        await awardCredits(updatedUser.id, 105, 'SIGNUP_BONUS', '105 free trial credits on account verification')
+        await awardCredits(updatedUser.id, signupBonus, 'SIGNUP_BONUS', `${signupBonus} free trial credits on account verification`)
     }
 
     const access = await getEffectivePlanAccess(updatedUser.id)
@@ -62,7 +64,7 @@ export async function verifyUserOtp(email: string, otp: string) {
 
     return {
         message: 'Email verified successfully',
-        user: { ...updatedUser, effective_plan: access.effective_plan, credits_balance: finalUser?.credits_balance ?? 105 },
+        user: { ...updatedUser, effective_plan: access.effective_plan, credits_balance: finalUser?.credits_balance ?? signupBonus },
         access_token: accessToken,
         refresh_token: refreshToken,
         accessToken,

@@ -38,7 +38,7 @@ export async function analyzeUiAnswerWithKimi(input: {
                 ?? process.env.AWS_BEDROCK_LLM_MODEL
                 ?? "moonshotai.kimi-k2.5",
             temperature: 0,
-            maxTokens: Number(process.env.KIMI_ANALYSIS_MAX_OUTPUT_TOKENS ?? 4096),
+            maxTokens: Number(process.env.KIMI_ANALYSIS_MAX_OUTPUT_TOKENS ?? 1500),
             responseFormat: "json_object",
         },
     )

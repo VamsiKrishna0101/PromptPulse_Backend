@@ -10,8 +10,9 @@ import { SCRAPE_QUEUE_NAME, type ScrapeQueueJob } from "../queues/scrape_queue"
 import { runPrompt } from "../features/dashboard/dashboard_service"
 import { buildGeoPromptText } from "../features/prompts/prompt_service"
 import { runUiScrape, type UiEngine, type UiScrapeResult } from "../features/scraping/scraper_api_client"
-import { spendCredits } from "../features/credits/credits_service"
-import { CREDIT_COSTS } from "../features/subscription/plan_config"
+import { isScrapingDisabled } from "../features/scraping/scrape_gate"
+import { refundCredits, spendCredits } from "../features/credits/credits_service"
+import { getPromptRunCreditCost } from "../features/payments/credits_service"
 
 const engineMap: Record<Engine, UiEngine> = {
     CHATGPT: "chatgpt",
@@ -93,6 +94,9 @@ async function refreshRunStatus(run_id: string) {
             completed_at: new Date()
         }
     })
+    await import("../features/seo/onboarding/onboarding_service")
+        .then(module => module.finalizeOnboardingVisibility(run_id))
+        .catch(error => console.error("Could not finalize SEO onboarding visibility", error))
 }
 
 async function processScrapeJob(scrape_job_id: string) {
@@ -104,6 +108,19 @@ async function processScrapeJob(scrape_job_id: string) {
     // Guard: if job was already completed by a previous BullMQ retry, skip it
     if (scrapeJob.status === ScrapeJobStatus.SUCCESS) {
         console.log(`Scrape job ${scrape_job_id} already succeeded — skipping duplicate BullMQ delivery`)
+        return
+    }
+
+    if (isScrapingDisabled()) {
+        await prisma.scrapeJob.update({
+            where: { id: scrapeJob.id },
+            data: {
+                status: ScrapeJobStatus.FAILED,
+                completed_at: new Date(),
+                error_reason: "Scraping disabled by administrator for all projects.",
+            },
+        })
+        await refreshRunStatus(scrapeJob.run_id)
         return
     }
 
@@ -173,14 +190,16 @@ async function processScrapeJob(scrape_job_id: string) {
     let chat_id: string | undefined
 
     if (status === ScrapeJobStatus.SUCCESS && result.answer_text) {
+        const unitCreditCost = await getPromptRunCreditCost(scrapeJob.project.user_id)
+        const chargeKey = `prompt-run:${scrapeJob.id}:v2`
         try {
             await spendCredits({
                 userId: scrapeJob.project.user_id,
-                amount: CREDIT_COSTS.prompt_run,
+                amount: unitCreditCost,
                 action: "PROMPT_RUN",
                 description: `${scrapeJob.engine} visibility check`,
-                idempotencyKey: `prompt-run:${scrapeJob.id}`,
-                metadata: { run_id: scrapeJob.run_id, scrape_job_id: scrapeJob.id, engine: scrapeJob.engine },
+                idempotencyKey: chargeKey,
+                metadata: { run_id: scrapeJob.run_id, scrape_job_id: scrapeJob.id, engine: scrapeJob.engine, unit_credit_cost: unitCreditCost },
             })
         } catch (error) {
             const reason = error instanceof Error ? error.message : "Insufficient credits"
@@ -192,18 +211,31 @@ async function processScrapeJob(scrape_job_id: string) {
             throw error
         }
 
-        const chat = await runPrompt({
-            prompt_id: scrapeJob.prompt_id,
-            run_id: scrapeJob.run_id,
-            geo_variant_id: scrapeJob.geo_variant_id,
-            geo_country_code: scrapeJob.geo_country_code,
-            geo_country_name: scrapeJob.geo_country_name,
-            geo_city: scrapeJob.geo_city,
-            raw_response: result.answer_text,
-            ai_model: servedFromCache ? `${result.model_label ?? engine}-cached` : result.model_label,
-            screenshot_path: result.screenshot_path,
-            citations: result.citations
-        })
+        let chat
+        try {
+            chat = await runPrompt({
+                prompt_id: scrapeJob.prompt_id,
+                run_id: scrapeJob.run_id,
+                geo_variant_id: scrapeJob.geo_variant_id,
+                geo_country_code: scrapeJob.geo_country_code,
+                geo_country_name: scrapeJob.geo_country_name,
+                geo_city: scrapeJob.geo_city,
+                raw_response: result.answer_text,
+                ai_model: servedFromCache ? `${result.model_label ?? engine}-cached` : result.model_label,
+                screenshot_path: result.screenshot_path,
+                citations: result.citations
+            })
+        } catch (error) {
+            await refundCredits({
+                userId: scrapeJob.project.user_id,
+                amount: unitCreditCost,
+                action: "PROMPT_RUN",
+                description: "Refund for AI result that could not be analyzed",
+                idempotencyKey: chargeKey,
+                metadata: { run_id: scrapeJob.run_id, scrape_job_id: scrapeJob.id },
+            }).catch((refundError: unknown) => console.error("Could not refund failed AI analysis", refundError))
+            throw error
+        }
         chat_id = chat.id
 
         await prisma.prompt.update({

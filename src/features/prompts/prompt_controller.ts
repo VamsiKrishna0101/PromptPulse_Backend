@@ -7,7 +7,7 @@ import {
     toggleGeoVariant, getGeoVisibilityStats, getGeoCountryByName,
 } from './prompt_service'
 import { discoverPromptCandidates } from './prompt_discovery_service'
-import { assertProjectAccess, assertPromptAccess } from '../projects/project_access'
+import { assertProjectAccess, assertProjectMutationAccess, assertPromptAccess } from '../projects/project_access'
 import type { AuthenticatedRequest } from '../../middleware/auth'
 import { assertCanCreatePrompts } from '../subscription/subscription_service'
 import prisma from '../../lib/prisma'
@@ -101,7 +101,7 @@ export const createTopicController = async (req: Request, res: Response): Promis
             return
         }
 
-        await assertProjectAccess(project_id, (req as AuthenticatedRequest).user.id)
+        await assertProjectMutationAccess(project_id, (req as AuthenticatedRequest).user.id)
 
         const topic = await createTopic({
             project_id,
@@ -139,7 +139,7 @@ export const createPromptController = async (req: Request, res: Response): Promi
         }
 
         const user = (req as AuthenticatedRequest).user
-        const project = await assertProjectAccess(project_id, user.id)
+        const project = await assertProjectMutationAccess(project_id, user.id)
 
         const topics = await getPromptTopics(project_id)
         const topicExists = topics.some(topic => topic.name.toLowerCase() === parsed.data.topic.trim().toLowerCase())
@@ -211,7 +211,7 @@ export const discoverPromptsController = async (req: Request, res: Response): Pr
             return
         }
 
-        await assertProjectAccess(project_id, (req as AuthenticatedRequest).user.id)
+        await assertProjectMutationAccess(project_id, (req as AuthenticatedRequest).user.id)
         const result = await discoverPromptCandidates(project_id)
         res.status(201).json(result)
     } catch (error) {
@@ -220,6 +220,23 @@ export const discoverPromptsController = async (req: Request, res: Response): Pr
             return
         }
         res.status(500).json({ error: 'Failed to discover prompt suggestions' })
+    }
+}
+
+export const deletePromptController = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { prompt_id } = req.params
+        if (!prompt_id || Array.isArray(prompt_id)) {
+            res.status(400).json({ error: 'prompt_id is required' })
+            return
+        }
+
+        const user_id = (req as AuthenticatedRequest).user.id
+        await assertPromptMutationAccess(prompt_id, user_id)
+        await deletePrompt(prompt_id)
+        res.status(200).json({ success: true })
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to delete prompt' })
     }
 }
 
@@ -232,7 +249,7 @@ export const activatePromptController = async (req: Request, res: Response): Pro
         }
 
         const user_id = (req as AuthenticatedRequest).user.id
-        await assertPromptAccess(prompt_id, user_id)
+        await assertPromptMutationAccess(prompt_id, user_id)
         const currentPrompt = await prisma.prompt.findUnique({
             where: { id: prompt_id },
             select: { status: true, is_active: true },
@@ -261,7 +278,7 @@ export const deactivatePromptController = async (req: Request, res: Response): P
         }
 
         const user_id = (req as AuthenticatedRequest).user.id
-        await assertPromptAccess(prompt_id, user_id)
+        await assertPromptMutationAccess(prompt_id, user_id)
         const prompt = await deactivatePrompt(prompt_id)
         res.status(200).json(prompt)
     } catch (error) {
@@ -311,7 +328,7 @@ export const addGeoVariantController = async (req: Request, res: Response): Prom
             return
         }
         const user_id = (req as AuthenticatedRequest).user.id
-        await assertPromptAccess(prompt_id, user_id)
+        await assertPromptMutationAccess(prompt_id, user_id)
         const variant = await addGeoVariant({
             prompt_id,
             country_code,
@@ -336,6 +353,12 @@ export const deleteGeoVariantController = async (req: Request, res: Response): P
             res.status(400).json({ error: 'variant_id is required' })
             return
         }
+        const variant = await prisma.promptGeoVariant.findUnique({ where: { id: variant_id } })
+        if (!variant) {
+            res.status(404).json({ error: 'Variant not found' })
+            return
+        }
+        await assertPromptMutationAccess(variant.prompt_id, (req as AuthenticatedRequest).user.id)
         await removeGeoVariant(variant_id)
         res.json({ success: true })
     } catch (error) {
@@ -354,6 +377,12 @@ export const toggleGeoVariantController = async (req: Request, res: Response): P
             res.status(400).json({ error: 'variant_id is required' })
             return
         }
+        const existingVariant = await prisma.promptGeoVariant.findUnique({ where: { id: variant_id } })
+        if (!existingVariant) {
+            res.status(404).json({ error: 'Variant not found' })
+            return
+        }
+        await assertPromptMutationAccess(existingVariant.prompt_id, (req as AuthenticatedRequest).user.id)
         const variant = await toggleGeoVariant(variant_id, is_active)
         res.json({ variant })
     } catch (error) {

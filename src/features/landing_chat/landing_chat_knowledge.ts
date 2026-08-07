@@ -10,7 +10,7 @@ Core capabilities:
 
 Trial and plans:
 - Free trial lasts 7 days and does not require a credit card.
-- Trial gives 105 credits, up to 5 prompts across 3 engines, 2 AI reports, and limited Sara access so users can test value before paying.
+- Trial includes enough credits to test up to 5 prompts across 3 engines for 7 days; the displayed credit grant reflects the selected account type.
 - Every paid plan includes the complete PromptPulse feature set: dashboards, sources, competitors, web analytics, Sara, AI Workspace, opportunity engine, action queue, GEO briefs, Reddit Intelligence, reports, exports, agency tools, and internal MCP context/tools.
 - Plans differ by capacity only: included credits, tracked prompts, and workspace allowance.
 - Starter: ₹2,499/mo, 2,250 included monthly credits, 15 tracked prompts, all 5 AI engines, daily tracking, core insights, Sara, reports, evidence, competitor analysis, and exports.
@@ -19,7 +19,7 @@ Trial and plans:
 - Agencies can add custom PAYG credits from 1,000 upward and share the wallet across client workspaces.
 
 Credits:
-- One credit equals one successful prompt on one AI engine.
+- A successful AI-engine check uses 3 credits for individual accounts or 2 credits for agency accounts. Failed provider runs are refunded.
 - AI visibility reports use 25 credits, AI SEO quick scans use 3 credits, full AI SEO audits use 15 credits, content briefs use 15, and Reddit intelligence starts at 25 credits.
 - Failed provider requests and retries are not charged. CSV/PDF exports are free.
 

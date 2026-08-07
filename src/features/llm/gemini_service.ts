@@ -498,42 +498,93 @@ function domainFromCitations(
 function classifySourceDomain(domainOrUrl: string, brandUrl: string, mentionedBrands: string[]) {
     const domain = normalizeDomain(domainOrUrl)
     const ownDomain = normalizeDomain(safeDomain(brandUrl) || brandUrl)
-    if (domain && ownDomain && domain === ownDomain) return "YOU" as const
-    if (domain.includes("reddit.com") || domain.includes("quora.com") || domain.includes("trustpilot.com")) return "UGC" as const
-    if (domain.includes("linkedin.com") || domain.includes("twitter.com") || domain.includes("x.com") || domain.includes("youtube.com")) return "SOCIAL" as const
-    if (domain.includes("wikipedia.org") || domain.includes("wikidata.org")) return "REFERENCE" as const
-    if (domain.endsWith(".gov") || domain.endsWith(".edu") || domain.includes(".gov.") || domain.includes(".edu.")) return "INSTITUTIONAL" as const
-    if (isEditorialDomain(domain)) return "EDITORIAL" as const
 
+    // Own brand
+    if (domain && ownDomain && domain === ownDomain) return "YOU" as const
+
+    // Known UGC platforms (closed, finite list — appropriate)
+    if (/\b(reddit|quora|trustpilot|producthunt|g2crowd|glassdoor|yelp|tripadvisor)\b/.test(domain)) return "UGC" as const
+
+    // Known social platforms (closed, finite list — appropriate)
+    if (/\b(linkedin|twitter|x\.com|youtube|instagram|facebook|tiktok|pinterest|snapchat|threads)\b/.test(domain)) return "SOCIAL" as const
+
+    // Reference / encyclopedic (closed, finite list — appropriate)
+    if (/\b(wikipedia|wikidata|investopedia|britannica|scholarpedia|imdb)\b/.test(domain)) return "REFERENCE" as const
+
+    // Institutional by TLD
+    if (domain.endsWith(".gov") || domain.endsWith(".edu") || domain.includes(".gov.") || domain.includes(".edu.")) return "INSTITUTIONAL" as const
+
+    // G2 / Capterra / software review platforms
+    if (/\b(g2\.com|capterra|softwareadvice|getapp|crozdesk|sourceforge|alternativeto)\b/.test(domain)) return "REFERENCE" as const
+
+    // Competitor check via known brand mapping
     const brandRoots = mentionedBrands
         .map(brand => knownBrandDomain(brand))
         .filter((value): value is string => Boolean(value))
         .map(value => normalizeDomain(value))
     if (brandRoots.includes(domain)) return "COMPETITOR" as const
 
+    // Heuristic editorial classification using domain word tokens + URL path signals
+    if (isEditorialBySignals(domainOrUrl, domain)) return "EDITORIAL" as const
+
     return "CORPORATE" as const
 }
 
-function isEditorialDomain(domain: string) {
-    const editorialMarkers = [
-        "blog",
-        "insights",
-        "review",
-        "reviews",
-        "roundup",
-        "guide",
-        "news",
-        "forbes.com",
-        "techcrunch.com",
-        "g2.com",
-        "capterra.com",
-        "softwareadvice.com",
-        "searchengineland.com",
-        "digitalapplied.com",
-        "therankmasters.com",
-        "marketing180.com",
+/**
+ * Signal-based editorial detection — NO hardcoded domain list.
+ * Works for any domain by reading:
+ * 1. Domain word tokens (reuters → "news wire", wsj → "street journal" etc.)
+ * 2. URL path segments (/blog/, /news/, /insights/, /best-, /vs-, etc.)
+ * 3. Subdomain signals (blog.company.com, news.company.com)
+ */
+function isEditorialBySignals(domainOrUrl: string, domain: string): boolean {
+    // --- 1. Domain-level word signals ---
+    // Split domain into word tokens (e.g. "theverge.com" → ["theverge"], "tech-crunch.com" → ["tech", "crunch"])
+    const domainRoot = domain.split(".").slice(0, -1).join(".")  // strip TLD
+    const domainWords = domainRoot.split(/[-_.]/)
+
+    const editorialDomainWords = [
+        // News / media words
+        "news", "journal", "gazette", "herald", "tribune", "times", "post", "daily",
+        "weekly", "monthly", "press", "media", "wire", "report", "reporter",
+        "magazine", "chronicle", "dispatch", "bulletin", "observer", "courier",
+        "review", "reviews", "digest",
+        // Content marketing / editorial words
+        "blog", "insights", "insight", "guide", "guides", "roundup", "editorial",
+        "opinion", "analysis", "research", "resources", "academy", "learn",
+        "hub", "community", "forum", "knowledge",
     ]
-    return editorialMarkers.some(marker => domain.includes(marker))
+
+    const hasEditorialDomainWord = domainWords.some(word =>
+        word.length >= 3 && editorialDomainWords.includes(word.toLowerCase())
+    )
+    if (hasEditorialDomainWord) return true
+
+    // --- 2. Subdomain signals (e.g. blog.zapier.com, news.ycombinator.com) ---
+    const parts = domain.split(".")
+    const subdomain = parts.length >= 3 ? parts[0].toLowerCase() : ""
+    if (["blog", "news", "insights", "learn", "resources", "community", "forum"].includes(subdomain)) return true
+
+    // --- 3. URL path signals ---
+    let path = ""
+    try {
+        const urlToParse = domainOrUrl.startsWith("http") ? domainOrUrl : `https://${domainOrUrl}`
+        path = new URL(urlToParse).pathname.toLowerCase()
+    } catch {
+        // Not a full URL, skip path analysis
+        return false
+    }
+
+    const editorialPathSignals = [
+        "/blog/", "/news/", "/insights/", "/articles/", "/article/",
+        "/guides/", "/guide/", "/resources/", "/learn/", "/learning/",
+        "/editorial/", "/opinion/", "/press/",
+        // Comparison / listicle patterns (strong editorial signals)
+        "/best-", "/top-", "-vs-", "/vs/", "/compare/", "/alternatives/", "/alternative-",
+        "/roundup", "/reviews/", "/review/",
+    ]
+
+    return editorialPathSignals.some(signal => path.includes(signal))
 }
 
 function isAiEngineDomain(domainOrUrl: string | null | undefined) {

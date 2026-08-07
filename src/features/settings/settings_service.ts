@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs"
 import prisma from "../../lib/prisma"
+import { AccountType } from "@prisma/client"
 
 export async function getSettings(userId: string) {
     const user = await prisma.user.findUnique({
@@ -66,4 +67,20 @@ export async function updatePassword(userId: string, currentPassword: string, ne
     })
 
     return { message: "Password updated successfully" }
+}
+
+export async function updateAccountType(userId: string, accountType: AccountType) {
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { account_type: true } })
+    if (!user) throw new Error("User not found")
+    if (user.account_type === accountType) return { account_type: accountType }
+    if (user.account_type === AccountType.AGENCY) {
+        throw new Error("Agency accounts cannot be converted to individual accounts while shared workspace data exists")
+    }
+    const paidSubscription = await prisma.subscription.findFirst({
+        where: { user_id: userId, plan: { not: "FREE" }, status: { in: ["ACTIVE", "PAST_DUE", "INCOMPLETE"] } },
+        select: { id: true },
+    })
+    if (paidSubscription) throw new Error("Cancel the active individual subscription before converting to an agency account")
+    await prisma.user.update({ where: { id: userId }, data: { account_type: AccountType.AGENCY } })
+    return { account_type: AccountType.AGENCY }
 }

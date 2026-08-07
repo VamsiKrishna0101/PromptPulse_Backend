@@ -164,59 +164,133 @@ enum DemoStatus {
   NO_SHOW
 }
 
-model User {
-  id             String      @id @default(uuid())
-  email          String      @unique
-  password       String
-  is_verified    Boolean     @default(false)
-  otp            String?
-  otp_expires_at DateTime?
-  account_type   AccountType
-  role           UserRole    @default(USER)
-  plan           Plan        @default(FREE)
-  credits_balance Int        @default(0)
-  product_tour_completed Boolean @default(false)
-  product_tour_completed_at DateTime?
-  created_at     DateTime    @default(now())
-  updated_at     DateTime    @updatedAt
+// ─── SEO V2 Enums ─────────────────────────────────────────────────────────────
 
-  projects       Project[]
-  sara_conversations SaraConversation[]
-  subscriptions  Subscription[]
-  plan_usages    PlanUsage[]
-  credit_ledger_entries CreditLedgerEntry[]
-  helpcenter     HelpCenter[]
-  ai_reports     AIReport[]
-  content_briefs ContentBrief[]
-  action_queue_items ActionQueueItem[]
-  weekly_email_reports WeeklyEmailReport[]
-  reddit_intelligence_runs RedditIntelligenceRun[]
-  seo_audits SeoAudit[]
-  reddit_posts RedditPost[]
-  brand_preferences BrandPreference[]
-  billing_invoices BillingInvoice[]
-  credit_transactions CreditTransaction[]
-  razorpay_orders RazorpayOrder[]
-  credit_buckets CreditBucket[]
-  owned_agency_memberships AgencyMembership[] @relation("AgencyOwnerMemberships")
-  agency_memberships AgencyMembership[] @relation("AgencyMemberMemberships")
-  sent_agency_invitations AgencyInvitation[] @relation("AgencyInvitationOwner")
-  received_agency_invitations AgencyInvitation[] @relation("AgencyInvitationInvitee")
-  agency_client_links AgencyClientLink[] @relation("AgencyClientOwner")
-  client_agency_links AgencyClientLink[] @relation("AgencyClientUser")
+enum SeoV2JobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  PARTIAL
+  FAILED
+}
+
+enum SeoV2CrawlErrorCode {
+  NONE
+  DNS_FAILURE
+  TIMEOUT
+  ROBOTS_BLOCKED
+  HTTP_403
+  HTTP_404
+  HTTP_4XX
+  HTTP_500
+  HTTP_5XX
+  REDIRECT_LOOP
+  PARSE_ERROR
+}
+
+enum SeoV2IssueSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+  INFO
+}
+
+enum SeoV2IssueCategory {
+  INDEXABILITY
+  REDIRECT
+  CANONICAL
+  TITLE
+  META_DESCRIPTION
+  HEADINGS
+  IMAGES
+  LINKS
+  SCHEMA
+  MOBILE
+  DUPLICATE_CONTENT
+  SITEMAP
+  ROBOTS
+  ORPHAN_PAGES
+  CRAWL_DEPTH
+}
+
+enum SeoV2IssueVerification {
+  UNVERIFIED
+  PENDING_RECRAWL
+  VERIFIED_FIXED
+  VERIFIED_STILL_PRESENT
+}
+
+model User {
+  id                        String      @id @default(uuid())
+  email                     String      @unique
+  password                  String
+  is_verified               Boolean     @default(false)
+  otp                       String?
+  otp_expires_at            DateTime?
+  account_type              AccountType
+  role                      UserRole    @default(USER)
+  plan                      Plan        @default(FREE)
+  credits_balance           Int         @default(0)
+  product_tour_completed    Boolean     @default(false)
+  product_tour_completed_at DateTime?
+  created_at                DateTime    @default(now())
+  updated_at                DateTime    @updatedAt
+
+  projects                         Project[]
+  sara_conversations               SaraConversation[]
+  subscriptions                    Subscription[]
+  plan_usages                      PlanUsage[]
+  credit_ledger_entries            CreditLedgerEntry[]
+  helpcenter                       HelpCenter[]
+  ai_reports                       AIReport[]
+  content_briefs                   ContentBrief[]
+  action_queue_items               ActionQueueItem[]
+  weekly_email_reports             WeeklyEmailReport[]
+  reddit_intelligence_runs         RedditIntelligenceRun[]
+  seo_audits                       SeoAudit[]
+  reddit_posts                     RedditPost[]
+  brand_preferences                BrandPreference[]
+  billing_invoices                 BillingInvoice[]
+  credit_transactions              CreditTransaction[]
+  razorpay_orders                  RazorpayOrder[]
+  credit_buckets                   CreditBucket[]
+  owned_agency_memberships         AgencyMembership[]                    @relation("AgencyOwnerMemberships")
+  agency_memberships               AgencyMembership[]                    @relation("AgencyMemberMemberships")
+  sent_agency_invitations          AgencyInvitation[]                    @relation("AgencyInvitationOwner")
+  received_agency_invitations      AgencyInvitation[]                    @relation("AgencyInvitationInvitee")
+  agency_client_links              AgencyClientLink[]                    @relation("AgencyClientOwner")
+  client_agency_links              AgencyClientLink[]                    @relation("AgencyClientUser")
+  agency_branding                  AgencyBranding?
+  agency_portal_shares             AgencyPortalShare[]                   @relation("AgencyPortalShares")
+  // SEO V2
+  seo_crawl_jobs                   SeoCrawlJob[]
+  gsc_connections                  GscConnection[]
+  seo_domain_overview_snapshots    SeoDomainResearchOverviewSnapshot[]
+  seo_domain_keyword_snapshots     SeoDomainResearchKeywordSnapshot[]
+  seo_domain_top_pages_snapshots   SeoDomainResearchTopPagesSnapshot[]
+  seo_domain_competitor_snapshots  SeoDomainResearchCompetitorSnapshot[]
+  seo_domain_keyword_gap_snapshots SeoDomainResearchKeywordGapSnapshot[]
+  seo_provider_snapshots           SeoProviderSnapshot[]
+  seo_onboarding_runs              SeoOnboardingRun[]     @relation("SeoOnboardingClient")
+  seo_onboarding_runs_requested    SeoOnboardingRun[]     @relation("SeoOnboardingRequestedBy")
+  // Campaigns
+  whatsapp_accounts                WhatsAppAccount[]
+  voice_accounts                   VoiceAccount[]
+  email_accounts                   EmailAccount[]
 }
 
 model AgencyMembership {
-  id              String                 @id @default(uuid())
-  agency_user_id  String
-  member_user_id  String
-  role            AgencyMembershipRole   @default(ANALYST)
-  status          AgencyMembershipStatus @default(ACTIVE)
-  created_at      DateTime               @default(now())
-  updated_at      DateTime               @updatedAt
+  id             String                 @id @default(uuid())
+  agency_user_id String
+  member_user_id String
+  role           AgencyMembershipRole   @default(ANALYST)
+  status         AgencyMembershipStatus @default(ACTIVE)
+  created_at     DateTime               @default(now())
+  updated_at     DateTime               @updatedAt
 
-  agency          User                   @relation("AgencyOwnerMemberships", fields: [agency_user_id], references: [id], onDelete: Cascade)
-  member          User                   @relation("AgencyMemberMemberships", fields: [member_user_id], references: [id], onDelete: Cascade)
+  agency User @relation("AgencyOwnerMemberships", fields: [agency_user_id], references: [id], onDelete: Cascade)
+  member User @relation("AgencyMemberMemberships", fields: [member_user_id], references: [id], onDelete: Cascade)
 
   @@unique([agency_user_id, member_user_id])
   @@index([member_user_id, status])
@@ -224,83 +298,149 @@ model AgencyMembership {
 }
 
 model AgencyInvitation {
-  id              String                  @id @default(uuid())
+  id              String                 @id @default(uuid())
   agency_user_id  String
   invitee_user_id String?
   email           String
-  type            AgencyInvitationType    @default(TEAM_MEMBER)
-  role            AgencyMembershipRole    @default(ANALYST)
-  token           String                  @unique
-  status          AgencyInvitationStatus  @default(PENDING)
+  type            AgencyInvitationType   @default(TEAM_MEMBER)
+  role            AgencyMembershipRole   @default(ANALYST)
+  token           String                 @unique
+  status          AgencyInvitationStatus @default(PENDING)
+  assigned_project_ids String[]          @default([])
   expires_at      DateTime
-  created_at      DateTime                @default(now())
-  updated_at      DateTime                @updatedAt
+  created_at      DateTime               @default(now())
+  updated_at      DateTime               @updatedAt
 
-  agency          User                    @relation("AgencyInvitationOwner", fields: [agency_user_id], references: [id], onDelete: Cascade)
-  invitee         User?                   @relation("AgencyInvitationInvitee", fields: [invitee_user_id], references: [id], onDelete: SetNull)
+  agency  User  @relation("AgencyInvitationOwner", fields: [agency_user_id], references: [id], onDelete: Cascade)
+  invitee User? @relation("AgencyInvitationInvitee", fields: [invitee_user_id], references: [id], onDelete: SetNull)
 
   @@index([email, status])
   @@index([agency_user_id, status])
 }
 
 model AgencyClientLink {
-  id              String   @id @default(uuid())
-  agency_user_id  String
-  client_user_id  String
-  role            String   @default("CLIENT_ADMIN")
-  status          String   @default("ACTIVE")
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
+  id                  String   @id @default(uuid())
+  agency_user_id      String
+  client_user_id      String
+  role                String   @default("CLIENT_ADMIN")
+  status              String   @default("ACTIVE")
+  category            String?  @default("General")
+  monthly_credit_cap  Int?     @default(10000)
+  assigned_manager_id String?
+  assigned_project_ids String[] @default([])
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
 
-  agency          User     @relation("AgencyClientOwner", fields: [agency_user_id], references: [id], onDelete: Cascade)
-  client          User     @relation("AgencyClientUser", fields: [client_user_id], references: [id], onDelete: Cascade)
+  agency User @relation("AgencyClientOwner", fields: [agency_user_id], references: [id], onDelete: Cascade)
+  client User @relation("AgencyClientUser", fields: [client_user_id], references: [id], onDelete: Cascade)
 
   @@unique([agency_user_id, client_user_id])
   @@index([client_user_id, status])
 }
 
-  model Project {
-  id             String       @id @default(uuid())
-  brand_name     String       @unique
+model AgencyBranding {
+  id                 String   @id @default(uuid())
+  agency_user_id     String   @unique
+  brand_name         String?
+  logo_url           String?
+  favicon_url        String?
+  primary_color      String   @default("#2563eb")
+  accent_color       String   @default("#0f172a")
+  portal_title       String?
+  support_email      String?
+  custom_cname       String?
+  footer_text        String?
+  enable_white_label Boolean  @default(true)
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+
+  agency User @relation(fields: [agency_user_id], references: [id], onDelete: Cascade)
+}
+
+model AgencyPortalShare {
+  id             String    @id @default(uuid())
+  token          String    @unique
+  agency_user_id String
+  project_id     String
+  title          String?
+  passcode_hash  String?
+  is_active      Boolean   @default(true)
+  expires_at     DateTime?
+  view_count     Int       @default(0)
+  last_viewed_at DateTime?
+  allowed_tabs   String[]  @default(["OVERVIEW", "AI_VISIBILITY", "SEO_KEYWORDS", "DELIVERABLES"])
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+
+  agency  User    @relation("AgencyPortalShares", fields: [agency_user_id], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
+
+  @@index([token, is_active])
+  @@index([agency_user_id, project_id])
+}
+
+model Project {
+  id             String   @id @default(uuid())
+  brand_name     String
   brand_url      String
   brand_location String
   user_id        String
-  user           User         @relation(fields: [user_id], references: [id])
-  created_at     DateTime     @default(now())
-  updated_at     DateTime     @updatedAt
+  user           User     @relation(fields: [user_id], references: [id])
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
 
-  prompts        Prompt[]
-  competitors    Competitor[]
-  runs           Run[]
-  scrape_jobs    ScrapeJob[]
-  web_analytics_sites WebAnalyticsSite[]
-  sara_conversations SaraConversation[]
-  topics Topic[]
-  ai_reports AIReport[]
-  content_briefs ContentBrief[]
-  action_queue_items ActionQueueItem[]
-  weekly_email_reports WeeklyEmailReport[]
-  reddit_intelligence_runs RedditIntelligenceRun[]
-  seo_audits SeoAudit[]
-    reddit_posts RedditPost[]
-    brand_preference BrandPreference?
-    engine_preferences ProjectEnginePreference[]
-  
-    @@index([user_id, created_at])
-  }
+  prompts                          Prompt[]
+  competitors                      Competitor[]
+  runs                             Run[]
+  scrape_jobs                      ScrapeJob[]
+  web_analytics_sites              WebAnalyticsSite[]
+  sara_conversations               SaraConversation[]
+  topics                           Topic[]
+  ai_reports                       AIReport[]
+  content_briefs                   ContentBrief[]
+  action_queue_items               ActionQueueItem[]
+  weekly_email_reports             WeeklyEmailReport[]
+  reddit_intelligence_runs         RedditIntelligenceRun[]
+  seo_audits                       SeoAudit[]
+  reddit_posts                     RedditPost[]
+  agency_portal_shares             AgencyPortalShare[]
+  brand_preference                 BrandPreference?
+  engine_preferences               ProjectEnginePreference[]
+  // SEO V2
+  seo_crawl_jobs                   SeoCrawlJob[]
+  seo_v2_audits                    SeoV2Audit[]
+  gsc_connections                  GscConnection[]
+  gsc_data_rows                    GscDataRow[]
+  seo_domain_overview_snapshots    SeoDomainResearchOverviewSnapshot[]
+  seo_domain_keyword_snapshots     SeoDomainResearchKeywordSnapshot[]
+  seo_domain_top_pages_snapshots   SeoDomainResearchTopPagesSnapshot[]
+  seo_domain_competitor_snapshots  SeoDomainResearchCompetitorSnapshot[]
+  seo_domain_keyword_gap_snapshots SeoDomainResearchKeywordGapSnapshot[]
+  seo_provider_snapshots           SeoProviderSnapshot[]
+  seo_rank_tracking_configs        SeoRankTrackingConfig[]
+  seo_rank_check_runs              SeoRankCheckRun[]
+  seo_onboarding_runs              SeoOnboardingRun[]
+  // Campaigns
+  whatsapp_account                 WhatsAppAccount?
+  voice_account                    VoiceAccount?
+  email_account                    EmailAccount?
 
-  model ProjectEnginePreference {
-    id         String   @id @default(uuid())
-    project_id String
-    project    Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
-    engine     Engine
-    is_active  Boolean  @default(true)
-    created_at DateTime @default(now())
-    updated_at DateTime @updatedAt
+  @@unique([user_id, brand_name])
+  @@index([user_id, created_at])
+}
 
-    @@unique([project_id, engine])
-    @@index([project_id, is_active])
-  }
+model ProjectEnginePreference {
+  id         String   @id @default(uuid())
+  project_id String
+  project    Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  engine     Engine
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@unique([project_id, engine])
+  @@index([project_id, is_active])
+}
 
 model BrandPreference {
   id                 String   @id @default(uuid())
@@ -322,27 +462,27 @@ model BrandPreference {
 }
 
 model RedditIntelligenceRun {
-  id              String   @id @default(uuid())
-  project_id      String
-  project         Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
-  user_id         String
-  user            User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  mode            String
-  status          String   @default("RUNNING")
-  credits_spent   Int      @default(0)
-  post_limit      Int      @default(25)
-  keyword_count   Int      @default(0)
-  keywords        Json     @default("[]")
-  summary         Json?
-  themes          Json     @default("[]")
-  actions         Json     @default("[]")
-  raw_result      Json?
-  error_reason    String?
-  completed_at    DateTime?
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
+  id            String    @id @default(uuid())
+  project_id    String
+  project       Project   @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  user_id       String
+  user          User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  mode          String
+  status        String    @default("RUNNING")
+  credits_spent Int       @default(0)
+  post_limit    Int       @default(25)
+  keyword_count Int       @default(0)
+  keywords      Json      @default("[]")
+  summary       Json?
+  themes        Json      @default("[]")
+  actions       Json      @default("[]")
+  raw_result    Json?
+  error_reason  String?
+  completed_at  DateTime?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
 
-  posts           RedditPost[]
+  posts RedditPost[]
 
   @@index([project_id, user_id, created_at])
   @@index([user_id, created_at])
@@ -350,13 +490,13 @@ model RedditIntelligenceRun {
 }
 
 model RedditPost {
-  id                    String   @id @default(uuid())
+  id                    String                 @id @default(uuid())
   run_id                String?
   run                   RedditIntelligenceRun? @relation(fields: [run_id], references: [id], onDelete: SetNull)
   project_id            String
-  project               Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  project               Project                @relation(fields: [project_id], references: [id], onDelete: Cascade)
   user_id               String
-  user                  User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user                  User                   @relation(fields: [user_id], references: [id], onDelete: Cascade)
   post_id               String?
   url                   String
   subreddit             String?
@@ -364,17 +504,17 @@ model RedditPost {
   description           String?
   author                String?
   keyword               String?
-  num_comments          Int      @default(0)
-  num_upvotes           Int      @default(0)
+  num_comments          Int                    @default(0)
+  num_upvotes           Int                    @default(0)
   date_posted           DateTime?
   sentiment             String?
   intent                String?
-  importance_score      Int      @default(0)
-  mentioned_brands      Json     @default("[]")
-  mentioned_competitors Json     @default("[]")
+  importance_score      Int                    @default(0)
+  mentioned_brands      Json                   @default("[]")
+  mentioned_competitors Json                   @default("[]")
   raw_json              Json?
-  created_at            DateTime @default(now())
-  updated_at            DateTime @updatedAt
+  created_at            DateTime               @default(now())
+  updated_at            DateTime               @updatedAt
 
   @@unique([project_id, url])
   @@index([project_id, importance_score])
@@ -384,20 +524,20 @@ model RedditPost {
 }
 
 model WeeklyEmailReport {
-  id              String   @id @default(uuid())
-  user_id         String
-  user            User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  project_id      String
-  project         Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
-  period_start    DateTime
-  period_end      DateTime
-  status          String
-  pdf_filename    String?
+  id               String    @id @default(uuid())
+  user_id          String
+  user             User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  project_id       String
+  project          Project   @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  period_start     DateTime
+  period_end       DateTime
+  status           String
+  pdf_filename     String?
   brevo_message_id String?
-  error_reason    String?
-  sent_at         DateTime?
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
+  error_reason     String?
+  sent_at          DateTime?
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
 
   @@unique([project_id, period_start, period_end])
   @@index([user_id, created_at])
@@ -433,51 +573,51 @@ model ContentBrief {
 }
 
 model AIReport {
-  id                     String   @id
-  project_id             String
-  project                Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
-  user_id                String
-  user                   User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  brand_name             String
-  period_type            String
-  period_start           DateTime
-  period_end             DateTime
-  previous_period_start  DateTime
-  previous_period_end    DateTime
-  status                 String
-  summary                Json?
-  report                 Json
-  errors                 Json     @default("[]")
-  created_at             DateTime @default(now())
-  updated_at             DateTime @updatedAt
+  id                    String   @id
+  project_id            String
+  project               Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  user_id               String
+  user                  User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  brand_name            String
+  period_type           String
+  period_start          DateTime
+  period_end            DateTime
+  previous_period_start DateTime
+  previous_period_end   DateTime
+  status                String
+  summary               Json?
+  report                Json
+  errors                Json     @default("[]")
+  created_at            DateTime @default(now())
+  updated_at            DateTime @updatedAt
 
   @@index([project_id, created_at])
   @@index([user_id, created_at])
 }
 
 model ActionQueueItem {
-  id                 String   @id @default(uuid())
+  id                 String    @id @default(uuid())
   project_id         String
-  project            Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  project            Project   @relation(fields: [project_id], references: [id], onDelete: Cascade)
   user_id            String
-  user               User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user               User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
   title              String
   description        String
   category           String
   priority           String
-  status             String   @default("OPEN")
-  impact_score       Int      @default(0)
-  effort_score       Int      @default(0)
-  confidence_score   Int      @default(0)
+  status             String    @default("OPEN")
+  impact_score       Int       @default(0)
+  effort_score       Int       @default(0)
+  confidence_score   Int       @default(0)
   recommended_action String?
   success_metric     String?
-  evidence           Json     @default("{}")
+  evidence           Json      @default("{}")
   source_type        String?
   source_ref_id      String?
   due_at             DateTime?
   completed_at       DateTime?
-  created_at         DateTime @default(now())
-  updated_at         DateTime @updatedAt
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
 
   @@index([project_id, user_id, status, priority])
   @@index([project_id, user_id, updated_at])
@@ -495,6 +635,7 @@ model Topic {
   @@unique([project_id, name])
   @@index([project_id])
 }
+
 model Prompt {
   id             String       @id @default(uuid())
   text           String
@@ -522,116 +663,427 @@ model Prompt {
 }
 
 model SeoAudit {
-  id                  String   @id @default(uuid())
-  project_id          String
-  project             Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
-  user_id             String
-  user                User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  url                 String
-  status              String   @default("COMPLETED")
-  overall_score       Int      @default(0)
-  technical_score     Int      @default(0)
-  ai_readiness_score  Int      @default(0)
-  local_score         Int      @default(0)
-  content_score       Int      @default(0)
-  schema_score        Int      @default(0)
-  credits_spent       Int      @default(0)
-  error_reason        String?
-  created_at          DateTime @default(now())
-  updated_at          DateTime @updatedAt
+  id                 String   @id @default(uuid())
+  project_id         String
+  project            Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  user_id            String
+  user               User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  url                String
+  status             String   @default("COMPLETED")
+  overall_score      Int      @default(0)
+  technical_score    Int      @default(0)
+  ai_readiness_score Int      @default(0)
+  local_score        Int      @default(0)
+  content_score      Int      @default(0)
+  schema_score       Int      @default(0)
+  credits_spent      Int      @default(0)
+  error_reason       String?
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
 
-  pages               SeoAuditPage[]
-  issues              SeoIssue[]
-  actions             SeoAction[]
-  rank_results        SeoRankResult[]
+  pages        SeoAuditPage[]
+  issues       SeoIssue[]
+  actions      SeoAction[]
+  rank_results SeoRankResult[]
 
   @@index([project_id, created_at])
   @@index([user_id, created_at])
 }
 
 model SeoRankResult {
-  id                  String   @id @default(uuid())
-  project_id          String
-  audit_id            String
-  audit               SeoAudit @relation(fields: [audit_id], references: [id], onDelete: Cascade)
-  keyword             String
-  country             String
-  language            String
-  target_domain       String
-  google_rank         Int?
-  ranking_url         String?
-  ranking_title       String?
-  organic_results     Json     @default("[]")
-  related_queries     Json     @default("[]")
-  status              String   @default("COMPLETED")
-  error_reason        String?
-  created_at          DateTime @default(now())
+  id              String   @id @default(uuid())
+  project_id      String
+  audit_id        String
+  audit           SeoAudit @relation(fields: [audit_id], references: [id], onDelete: Cascade)
+  keyword         String
+  country         String
+  language        String
+  target_domain   String
+  google_rank     Int?
+  ranking_url     String?
+  ranking_title   String?
+  organic_results Json     @default("[]")
+  related_queries Json     @default("[]")
+  status          String   @default("COMPLETED")
+  error_reason    String?
+  created_at      DateTime @default(now())
 
   @@unique([audit_id, keyword])
   @@index([project_id, created_at])
   @@index([audit_id])
 }
 
-model SeoAuditPage {
-  id                  String   @id @default(uuid())
-  audit_id            String
-  audit               SeoAudit @relation(fields: [audit_id], references: [id], onDelete: Cascade)
-  url                 String
-  status_code         Int?
-  title               String?
-  meta_description    String?
-  h1                  String?
-  canonical           String?
-  word_count          Int      @default(0)
-  indexable           Boolean  @default(true)
-  has_viewport        Boolean  @default(false)
-  has_schema          Boolean  @default(false)
-  has_faq             Boolean  @default(false)
-  detected_services   Json     @default("[]")
-  detected_locations  Json     @default("[]")
-  page_type           String   @default("OTHER")
-  created_at          DateTime @default(now())
+model SeoDomainResearchOverviewSnapshot {
+  id                   String   @id @default(uuid())
+  project_id           String
+  project              Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  requested_by_user_id String
+  requested_by_user    User     @relation(fields: [requested_by_user_id], references: [id], onDelete: Cascade)
+  target_domain        String
+  location_code        Int
+  country_iso_code     String
+  language_code        String
+  history_months       Int
+  payload              Json
+  provider_environment String
+  provider_cost_usd    Decimal  @default(0) @db.Decimal(12, 6)
+  provider_task_ids    String[] @default([])
+  fetched_at           DateTime @default(now())
+  expires_at           DateTime
 
-  issues              SeoIssue[]
+  @@index([project_id, target_domain, location_code, language_code, fetched_at])
+  @@index([expires_at])
+}
+
+model SeoDomainResearchKeywordSnapshot {
+  id                   String   @id @default(uuid())
+  project_id           String
+  project              Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  requested_by_user_id String
+  requested_by_user    User     @relation(fields: [requested_by_user_id], references: [id], onDelete: Cascade)
+  target_domain        String
+  location_code        Int
+  country_iso_code     String
+  language_code        String
+  item_limit           Int
+  total_count          Int
+  payload              Json
+  provider_environment String
+  provider_cost_usd    Decimal  @default(0) @db.Decimal(12, 6)
+  provider_task_ids    String[] @default([])
+  fetched_at           DateTime @default(now())
+  expires_at           DateTime
+
+  @@index([project_id, target_domain, location_code, language_code, fetched_at])
+  @@index([expires_at])
+}
+
+model SeoDomainResearchTopPagesSnapshot {
+  id                   String   @id @default(uuid())
+  project_id           String
+  project              Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  requested_by_user_id String
+  requested_by_user    User     @relation(fields: [requested_by_user_id], references: [id], onDelete: Cascade)
+  target_domain        String
+  location_code        Int
+  country_iso_code     String
+  language_code        String
+  item_limit           Int
+  total_count          Int
+  payload              Json
+  provider_environment String
+  provider_cost_usd    Decimal  @default(0) @db.Decimal(12, 6)
+  provider_task_ids    String[] @default([])
+  fetched_at           DateTime @default(now())
+  expires_at           DateTime
+
+  @@index([project_id, target_domain, location_code, language_code, fetched_at])
+  @@index([expires_at])
+}
+
+model SeoDomainResearchCompetitorSnapshot {
+  id                   String   @id @default(uuid())
+  project_id           String
+  project              Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  requested_by_user_id String
+  requested_by_user    User     @relation(fields: [requested_by_user_id], references: [id], onDelete: Cascade)
+  target_domain        String
+  location_code        Int
+  country_iso_code     String
+  language_code        String
+  item_limit           Int
+  total_count          Int
+  payload              Json
+  provider_environment String
+  provider_cost_usd    Decimal  @default(0) @db.Decimal(12, 6)
+  provider_task_ids    String[] @default([])
+  fetched_at           DateTime @default(now())
+  expires_at           DateTime
+
+  @@index([project_id, target_domain, location_code, language_code, fetched_at])
+  @@index([expires_at])
+}
+
+model SeoDomainResearchKeywordGapSnapshot {
+  id                   String   @id @default(uuid())
+  project_id           String
+  project              Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  requested_by_user_id String
+  requested_by_user    User     @relation(fields: [requested_by_user_id], references: [id], onDelete: Cascade)
+  target_domain        String
+  competitor_domain    String
+  location_code        Int
+  country_iso_code     String
+  language_code        String
+  item_limit           Int
+  payload              Json
+  provider_environment String
+  provider_cost_usd    Decimal  @default(0) @db.Decimal(12, 6)
+  provider_task_ids    String[] @default([])
+  fetched_at           DateTime @default(now())
+  expires_at           DateTime
+
+  @@index([project_id, target_domain, competitor_domain, location_code, language_code, fetched_at])
+  @@index([expires_at])
+}
+
+model SeoProviderSnapshot {
+  id                   String   @id @default(uuid())
+  project_id           String
+  project              Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  requested_by_user_id String
+  requested_by_user    User     @relation(fields: [requested_by_user_id], references: [id], onDelete: Cascade)
+  feature              String
+  scope_key            String
+  payload              Json
+  provider_environment String
+  provider_cost_usd    Decimal  @default(0) @db.Decimal(12, 6)
+  provider_task_ids    String[] @default([])
+  fetched_at           DateTime @default(now())
+  expires_at           DateTime
+
+  @@index([project_id, feature, scope_key, fetched_at])
+  @@index([expires_at])
+}
+
+model SeoOnboardingRun {
+  id                 String   @id @default(uuid())
+  project_id         String
+  project            Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  client_user_id     String
+  client_user        User     @relation("SeoOnboardingClient", fields: [client_user_id], references: [id], onDelete: Cascade)
+  requested_by_user_id String
+  requested_by_user  User     @relation("SeoOnboardingRequestedBy", fields: [requested_by_user_id], references: [id], onDelete: Cascade)
+  status             String   @default("QUEUED")
+  current_step      String   @default("QUEUED")
+  progress_percent  Int      @default(0)
+  max_credits       Int      @default(180)
+  credits_spent     Int      @default(0)
+  provider_cost_usd Decimal  @default(0) @db.Decimal(12, 6)
+  audit_id          String?
+  visibility_run_id String?  @unique
+  attempt_count     Int      @default(0)
+  input             Json     @default("{}")
+  cost_breakdown    Json     @default("{}")
+  summary           Json?
+  error_reason      String?
+  started_at        DateTime?
+  completed_at      DateTime?
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  findings          SeoOnboardingFinding[]
+  recommendations   SeoOnboardingRecommendation[]
+  steps             SeoOnboardingStep[]
+
+  @@index([project_id, created_at])
+  @@index([client_user_id, created_at])
+  @@index([status, created_at])
+}
+
+model SeoOnboardingStep {
+  id          String           @id @default(uuid())
+  run_id      String
+  run         SeoOnboardingRun @relation(fields: [run_id], references: [id], onDelete: Cascade)
+  step_key    String
+  status      String           @default("PENDING")
+  attempts    Int              @default(0)
+  result      Json             @default("{}")
+  error_reason String?
+  started_at  DateTime?
+  completed_at DateTime?
+  created_at  DateTime         @default(now())
+  updated_at  DateTime         @updatedAt
+
+  @@unique([run_id, step_key])
+  @@index([run_id, status])
+}
+
+model SeoOnboardingFinding {
+  id          String           @id @default(uuid())
+  run_id      String
+  run         SeoOnboardingRun @relation(fields: [run_id], references: [id], onDelete: Cascade)
+  category    String
+  title       String
+  summary     String
+  severity    String           @default("INFO")
+  evidence    Json             @default("{}")
+  created_at  DateTime         @default(now())
+
+  @@index([run_id, category])
+  @@index([run_id, severity])
+}
+
+model SeoOnboardingRecommendation {
+  id                 String           @id @default(uuid())
+  run_id             String
+  run                SeoOnboardingRun @relation(fields: [run_id], references: [id], onDelete: Cascade)
+  title              String
+  description        String
+  category           String
+  priority           String
+  impact_score       Int              @default(0)
+  effort_score       Int              @default(0)
+  confidence_score   Int              @default(0)
+  recommended_action String?
+  success_metric     String?
+  evidence           Json             @default("{}")
+  approval_status    String           @default("PENDING")
+  action_queue_id    String?
+  created_at         DateTime         @default(now())
+  updated_at         DateTime         @updatedAt
+
+  @@index([run_id, approval_status])
+  @@index([run_id, priority])
+}
+
+model SeoRankTrackingConfig {
+  id                String    @id @default(uuid())
+  project_id        String
+  project           Project   @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  domain            String
+  location_code     Int       @default(2356)
+  location_name     String?
+  language_code     String    @default("en")
+  device_mode       String    @default("both")
+  serp_depth        Int       @default(20)
+  schedule_interval String    @default("weekly")
+  is_active         Boolean   @default(true)
+  last_checked_at   DateTime?
+  next_check_at     DateTime?
+  last_skip_reason  String?
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
+
+  keywords SeoRankTrackingKeyword[]
+  runs     SeoRankCheckRun[]
+
+  @@index([project_id, is_active, created_at])
+  @@index([next_check_at, is_active])
+}
+
+model SeoRankTrackingKeyword {
+  id                 String                @id @default(uuid())
+  config_id          String
+  config             SeoRankTrackingConfig @relation(fields: [config_id], references: [id], onDelete: Cascade)
+  keyword            String
+  search_volume      Int?
+  keyword_difficulty Int?
+  cpc                Float?
+  metrics_fetched_at DateTime?
+  created_at         DateTime              @default(now())
+
+  snapshots SeoRankSnapshot[]
+
+  @@unique([config_id, keyword])
+  @@index([config_id, created_at])
+}
+
+model SeoRankCheckRun {
+  id                String                @id @default(uuid())
+  config_id         String
+  config            SeoRankTrackingConfig @relation(fields: [config_id], references: [id], onDelete: Cascade)
+  project_id        String
+  project           Project               @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  status            String                @default("PENDING")
+  provider_mode     String                @default("standard")
+  provider_task_ids String[]              @default([])
+  provider_task_map Json                  @default("[]")
+  keywords_total    Int                   @default(0)
+  keywords_checked  Int                   @default(0)
+  is_subset_run     Boolean               @default(false)
+  provider_cost_usd Decimal               @default(0) @db.Decimal(12, 6)
+  credits_spent     Int                   @default(0)
+  error_message     String?
+  started_at        DateTime              @default(now())
+  completed_at      DateTime?
+
+  snapshots SeoRankSnapshot[]
+
+  @@index([config_id, started_at])
+  @@index([project_id, started_at])
+  @@index([status, started_at])
+}
+
+model SeoRankSnapshot {
+  id                  String                 @id @default(uuid())
+  run_id              String
+  run                 SeoRankCheckRun        @relation(fields: [run_id], references: [id], onDelete: Cascade)
+  tracking_keyword_id String
+  tracking_keyword    SeoRankTrackingKeyword @relation(fields: [tracking_keyword_id], references: [id], onDelete: Cascade)
+  keyword             String
+  device              String
+  position            Int?
+  previous_position   Int?
+  ranking_url         String?
+  serp_features       String[]               @default([])
+  checked_at          DateTime               @default(now())
+
+  @@unique([run_id, tracking_keyword_id, device])
+  @@index([tracking_keyword_id, device, checked_at])
+  @@index([run_id])
+}
+
+model SeoAuditPage {
+  id                 String   @id @default(uuid())
+  audit_id           String
+  audit              SeoAudit @relation(fields: [audit_id], references: [id], onDelete: Cascade)
+  url                String
+  status_code        Int?
+  title              String?
+  meta_description   String?
+  h1                 String?
+  canonical          String?
+  word_count         Int      @default(0)
+  indexable          Boolean  @default(true)
+  has_viewport       Boolean  @default(false)
+  has_schema         Boolean  @default(false)
+  has_faq            Boolean  @default(false)
+  detected_services  Json     @default("[]")
+  detected_locations Json     @default("[]")
+  page_type          String   @default("OTHER")
+  created_at         DateTime @default(now())
+
+  issues SeoIssue[]
 
   @@index([audit_id])
   @@index([url])
 }
 
 model SeoIssue {
-  id              String        @id @default(uuid())
-  audit_id        String
-  audit           SeoAudit      @relation(fields: [audit_id], references: [id], onDelete: Cascade)
-  page_id         String?
-  page            SeoAuditPage? @relation(fields: [page_id], references: [id], onDelete: SetNull)
-  category        String
-  severity        String
-  title           String
-  description     String
-  recommendation  String
-  priority_score  Int           @default(50)
-  created_at      DateTime      @default(now())
+  id             String        @id @default(uuid())
+  audit_id       String
+  audit          SeoAudit      @relation(fields: [audit_id], references: [id], onDelete: Cascade)
+  page_id        String?
+  page           SeoAuditPage? @relation(fields: [page_id], references: [id], onDelete: SetNull)
+  category       String
+  severity       String
+  title          String
+  description    String
+  recommendation String
+  priority_score Int           @default(50)
+  created_at     DateTime      @default(now())
 
   @@index([audit_id, category])
   @@index([audit_id, severity])
 }
 
 model SeoAction {
-  id                  String   @id @default(uuid())
-  project_id          String
-  audit_id            String
-  audit               SeoAudit @relation(fields: [audit_id], references: [id], onDelete: Cascade)
-  action_type         String
-  title               String
-  description         String
-  page_url            String?
-  priority            String
-  difficulty          String
-  related_prompt_ids  String[] @default([])
-  related_sources     String[] @default([])
-  status              String   @default("OPEN")
-  created_at          DateTime @default(now())
-  updated_at          DateTime @updatedAt
+  id                 String   @id @default(uuid())
+  project_id         String
+  audit_id           String
+  audit              SeoAudit @relation(fields: [audit_id], references: [id], onDelete: Cascade)
+  action_type        String
+  title              String
+  description        String
+  page_url           String?
+  priority           String
+  difficulty         String
+  related_prompt_ids String[] @default([])
+  related_sources    String[] @default([])
+  status             String   @default("OPEN")
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
 
   @@index([project_id, status])
   @@index([audit_id])
@@ -641,9 +1093,9 @@ model GeoPromptVariant {
   id           String   @id @default(uuid())
   prompt_id    String
   prompt       Prompt   @relation(fields: [prompt_id], references: [id], onDelete: Cascade)
-  country_code String   // ISO 3166-1 alpha-2, e.g. "DE", "US", "IN"
-  country_name String   // "Germany", "United States"
-  city         String?  // Optional: "Munich", "Berlin"
+  country_code String // ISO 3166-1 alpha-2, e.g. "DE", "US", "IN"
+  country_name String // "Germany", "United States"
+  city         String? // Optional: "Munich", "Berlin"
   is_active    Boolean  @default(true)
   created_at   DateTime @default(now())
 
@@ -666,17 +1118,17 @@ model Competitor {
 }
 
 model Run {
-  id         String   @id @default(uuid())
-  project_id String
-  project    Project  @relation(fields: [project_id], references: [id])
-  status     VisibilityRunStatus @default(QUEUED)
+  id            String              @id @default(uuid())
+  project_id    String
+  project       Project             @relation(fields: [project_id], references: [id])
+  status        VisibilityRunStatus @default(QUEUED)
   scheduled_for DateTime?
-  started_at DateTime?
-  completed_at DateTime?
-  error_reason String?
-  ran_at     DateTime @default(now())
+  started_at    DateTime?
+  completed_at  DateTime?
+  error_reason  String?
+  ran_at        DateTime            @default(now())
 
-  chats      Chat[]
+  chats       Chat[]
   scrape_jobs ScrapeJob[]
 
   @@index([project_id, ran_at])
@@ -684,25 +1136,25 @@ model Run {
 }
 
 model Chat {
-  id               String    @id @default(uuid())
+  id               String            @id @default(uuid())
   run_id           String
-  run              Run       @relation(fields: [run_id], references: [id])
+  run              Run               @relation(fields: [run_id], references: [id])
   prompt_id        String
-  prompt           Prompt    @relation(fields: [prompt_id], references: [id])
+  prompt           Prompt            @relation(fields: [prompt_id], references: [id])
   geo_variant_id   String?
   geo_variant      GeoPromptVariant? @relation(fields: [geo_variant_id], references: [id])
-  geo_country_code String?   // "DE"
-  geo_country_name String?   // "Germany"
-  geo_city         String?   // "Munich"
+  geo_country_code String? // "DE"
+  geo_country_name String? // "Germany"
+  geo_city         String? // "Munich"
   ai_model         String
   raw_response     String
-  display_response  String?   // cleaned/formatted version for UI display
+  display_response String? // cleaned/formatted version for UI display
   answer_blocks    Json?
   screenshot_path  String?
   brand_mentioned  Boolean
   brand_position   Int?
   sentiment_score  Float?
-  created_at       DateTime  @default(now())
+  created_at       DateTime          @default(now())
 
   brand_mentions BrandMention[]
   sources        Source[]
@@ -717,34 +1169,34 @@ model Chat {
 }
 
 model ScrapeJob {
-  id               String           @id @default(uuid())
+  id               String            @id @default(uuid())
   run_id           String
-  run              Run              @relation(fields: [run_id], references: [id])
+  run              Run               @relation(fields: [run_id], references: [id])
   project_id       String
-  project          Project          @relation(fields: [project_id], references: [id])
+  project          Project           @relation(fields: [project_id], references: [id])
   prompt_id        String
-  prompt           Prompt           @relation(fields: [prompt_id], references: [id])
+  prompt           Prompt            @relation(fields: [prompt_id], references: [id])
   geo_variant_id   String?
   geo_variant      GeoPromptVariant? @relation(fields: [geo_variant_id], references: [id])
   geo_country_code String?
   geo_country_name String?
   geo_city         String?
-  chat_id          String?          @unique
-  chat             Chat?            @relation(fields: [chat_id], references: [id])
+  chat_id          String?           @unique
+  chat             Chat?             @relation(fields: [chat_id], references: [id])
   engine           Engine
-  status           ScrapeJobStatus  @default(QUEUED)
+  status           ScrapeJobStatus   @default(QUEUED)
   profile          String?
   answer_text      String?
   raw_text         String?
   citations        Json?
   screenshot_path  String?
-  retry_count      Int              @default(0)
+  retry_count      Int               @default(0)
   error_reason     String?
   scheduled_for    DateTime?
   started_at       DateTime?
   completed_at     DateTime?
-  created_at       DateTime         @default(now())
-  updated_at       DateTime         @updatedAt
+  created_at       DateTime          @default(now())
+  updated_at       DateTime          @updatedAt
 
   bright_data_batch_item BrightDataBatchItem?
 
@@ -754,24 +1206,24 @@ model ScrapeJob {
 }
 
 model BrightDataBatch {
-  id              String                @id @default(uuid())
-  engine          Engine
+  id               String                @id @default(uuid())
+  engine           Engine
   geo_country_code String?
-  scraper_id      String
-  snapshot_id     String?               @unique
-  status          BrightDataBatchStatus @default(PENDING)
-  input_count     Int
-  completed_count Int                   @default(0)
-  failed_count    Int                   @default(0)
-  error_reason    String?
-  triggered_at    DateTime?
-  last_polled_at  DateTime?
-  next_poll_at    DateTime?
-  completed_at    DateTime?
-  created_at      DateTime              @default(now())
-  updated_at      DateTime              @updatedAt
+  scraper_id       String
+  snapshot_id      String?               @unique
+  status           BrightDataBatchStatus @default(PENDING)
+  input_count      Int
+  completed_count  Int                   @default(0)
+  failed_count     Int                   @default(0)
+  error_reason     String?
+  triggered_at     DateTime?
+  last_polled_at   DateTime?
+  next_poll_at     DateTime?
+  completed_at     DateTime?
+  created_at       DateTime              @default(now())
+  updated_at       DateTime              @updatedAt
 
-  items           BrightDataBatchItem[]
+  items BrightDataBatchItem[]
 
   @@index([status, next_poll_at])
   @@index([engine, geo_country_code, created_at])
@@ -798,7 +1250,7 @@ model BrandMention {
   chat_id         String
   chat            Chat     @relation(fields: [chat_id], references: [id])
   brand_name      String
-  domain          String?  // e.g. peec.ai, profound.ai
+  domain          String? // e.g. peec.ai, profound.ai
   position        Int?
   sentiment_score Float?
   created_at      DateTime @default(now())
@@ -858,7 +1310,7 @@ model SourceUrlContent {
   created_at         DateTime      @default(now())
   updated_at         DateTime      @default(now()) @updatedAt
 
-  sources            Source[]
+  sources Source[]
 
   @@index([domain, fetch_status])
   @@index([updated_at])
@@ -875,8 +1327,8 @@ model WebAnalyticsSite {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  sessions   WebAnalyticsSession[]
-  events     WebAnalyticsEvent[]
+  sessions      WebAnalyticsSession[]
+  events        WebAnalyticsEvent[]
   custom_events WebAnalyticsCustomEvent[]
 
   @@index([project_id])
@@ -884,44 +1336,44 @@ model WebAnalyticsSite {
 }
 
 model WebAnalyticsSession {
-  id           String   @id @default(uuid())
-  site_id      String
-  site         WebAnalyticsSite @relation(fields: [site_id], references: [id])
-  visitor_id   String
-  ip_hash      String?
-  user_agent   String?
-  browser      String?
-  browser_version String?
-  browser_width Int?
-  browser_height Int?
-  os           String?
-  os_version   String?
-  device       String?
-  language     String?
-  screen_width Int?
-  screen_height Int?
+  id                 String           @id @default(uuid())
+  site_id            String
+  site               WebAnalyticsSite @relation(fields: [site_id], references: [id])
+  visitor_id         String
+  ip_hash            String?
+  user_agent         String?
+  browser            String?
+  browser_version    String?
+  browser_width      Int?
+  browser_height     Int?
+  os                 String?
+  os_version         String?
+  device             String?
+  language           String?
+  screen_width       Int?
+  screen_height      Int?
   screen_color_depth Int?
-  country      String?
-  referrer     String?
-  source       String?
-  medium       String?
-  landing_page String?
-  started_at   DateTime @default(now())
-  last_seen_at DateTime @default(now())
+  country            String?
+  referrer           String?
+  source             String?
+  medium             String?
+  landing_page       String?
+  started_at         DateTime         @default(now())
+  last_seen_at       DateTime         @default(now())
 
-  events       WebAnalyticsEvent[]
-  actions      WebAnalyticsAction[]
+  events  WebAnalyticsEvent[]
+  actions WebAnalyticsAction[]
 
   @@unique([site_id, visitor_id])
   @@index([site_id, last_seen_at])
 }
 
 model WebAnalyticsEvent {
-  id          String   @id @default(uuid())
+  id          String                @id @default(uuid())
   site_id     String
-  site        WebAnalyticsSite @relation(fields: [site_id], references: [id])
+  site        WebAnalyticsSite      @relation(fields: [site_id], references: [id])
   session_id  String?
-  session     WebAnalyticsSession? @relation(fields: [session_id], references: [id])
+  session     WebAnalyticsSession?  @relation(fields: [session_id], references: [id])
   type        WebAnalyticsEventType @default(PAGE_VIEW)
   path        String
   url         String?
@@ -931,7 +1383,7 @@ model WebAnalyticsEvent {
   event_value Json?
   duration_ms Int?
   metadata    Json?
-  created_at  DateTime @default(now())
+  created_at  DateTime              @default(now())
 
   @@index([site_id, created_at])
   @@index([site_id, type, created_at])
@@ -939,31 +1391,31 @@ model WebAnalyticsEvent {
 }
 
 model WebAnalyticsCustomEvent {
-  id         String   @id @default(uuid())
+  id         String                      @id @default(uuid())
   site_id    String
-  site       WebAnalyticsSite @relation(fields: [site_id], references: [id])
+  site       WebAnalyticsSite            @relation(fields: [site_id], references: [id])
   title      String
   type       WebAnalyticsCustomEventType @default(TOTAL_CHART)
   key        String?
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  created_at DateTime                    @default(now())
+  updated_at DateTime                    @updatedAt
 
-  actions    WebAnalyticsAction[]
+  actions WebAnalyticsAction[]
 
   @@index([site_id])
 }
 
 model WebAnalyticsAction {
-  id              String   @id @default(uuid())
+  id              String                  @id @default(uuid())
   custom_event_id String
   custom_event    WebAnalyticsCustomEvent @relation(fields: [custom_event_id], references: [id])
-  session_id       String?
-  session          WebAnalyticsSession? @relation(fields: [session_id], references: [id])
-  key              String?
-  value            Float   @default(1)
-  details          String?
-  created_at       DateTime @default(now())
-  updated_at       DateTime @updatedAt
+  session_id      String?
+  session         WebAnalyticsSession?    @relation(fields: [session_id], references: [id])
+  key             String?
+  value           Float                   @default(1)
+  details         String?
+  created_at      DateTime                @default(now())
+  updated_at      DateTime                @updatedAt
 
   @@index([custom_event_id, created_at])
   @@index([session_id])
@@ -979,93 +1431,123 @@ model SaraConversation {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  messages   SaraMessage[]
+  messages SaraMessage[]
 
   @@index([project_id, updated_at])
   @@index([user_id, updated_at])
 }
 
 model SaraMessage {
-  id              String          @id @default(uuid())
-  conversation_id String
-  conversation    SaraConversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
-  role            SaraMessageRole
-  content         String
-  citations       Json?
-  suggested_actions String[] @default([])
+  id                String           @id @default(uuid())
+  conversation_id   String
+  conversation      SaraConversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+  role              SaraMessageRole
+  content           String
+  citations         Json?
+  suggested_actions String[]         @default([])
   retrieved_context Json?
-  confidence      String?
-  created_at      DateTime @default(now())
+  confidence        String?
+  created_at        DateTime         @default(now())
 
   @@index([conversation_id, created_at])
 }
 
 model Subscription {
-  id                     String             @id @default(uuid())
-  user_id                String
-  user                   User               @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  plan                   Plan
-  status                 SubscriptionStatus @default(TRIALING)
-  amount_cents           Int
-  currency               String             @default("usd")
-  current_period_start   DateTime?
-  current_period_end     DateTime?
-  cancel_at_period_end   Boolean            @default(false)
-  stripe_customer_id     String?
-  stripe_subscription_id String?            @unique
-  stripe_checkout_session_id String?        @unique
-  billing_interval       String             @default("monthly")
-  trial_starts_at        DateTime           @default(now())
-  trial_ends_at          DateTime?
-  created_at             DateTime           @default(now())
-  updated_at             DateTime           @updatedAt
+  id                         String             @id @default(uuid())
+  user_id                    String
+  user                       User               @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  plan                       Plan
+  status                     SubscriptionStatus @default(TRIALING)
+  amount_cents               Int
+  currency                   String             @default("usd")
+  current_period_start       DateTime?
+  current_period_end         DateTime?
+  cancel_at_period_end       Boolean            @default(false)
+  stripe_customer_id         String?
+  stripe_subscription_id     String?            @unique
+  stripe_checkout_session_id String?            @unique
+  razorpay_subscription_id   String?            @unique
+  razorpay_plan_id           String?
+  razorpay_paid_count        Int                @default(0)
+  next_credit_grant_at       DateTime?
+  billing_interval           String             @default("monthly")
+  trial_starts_at            DateTime           @default(now())
+  trial_ends_at              DateTime?
+  created_at                 DateTime           @default(now())
+  updated_at                 DateTime           @updatedAt
 
-  billing_invoices       BillingInvoice[]
+  billing_invoices BillingInvoice[]
+  credit_grants    SubscriptionCreditGrant[]
 
   @@index([user_id, status])
   @@index([user_id, plan])
 }
 
+model RazorpayWebhookEvent {
+  id           String    @id @default(uuid())
+  webhook_key  String    @unique
+  event_type   String
+  status       String    @default("PROCESSING")
+  error_reason String?
+  processed_at DateTime?
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+
+  @@index([status, created_at])
+}
+
+model SubscriptionCreditGrant {
+  id              String       @id @default(uuid())
+  subscription_id String
+  subscription    Subscription @relation(fields: [subscription_id], references: [id], onDelete: Cascade)
+  grant_key       String       @unique
+  credits         Int
+  scheduled_for   DateTime
+  granted_at      DateTime     @default(now())
+
+  @@index([subscription_id, scheduled_for])
+}
+
 model StripeWebhookEvent {
-  id              String   @id @default(uuid())
-  stripe_event_id String   @unique
+  id              String    @id @default(uuid())
+  stripe_event_id String    @unique
   event_type      String
-  status          String   @default("PROCESSING")
+  status          String    @default("PROCESSING")
   error_reason    String?
   processed_at    DateTime?
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
 
   @@index([status, created_at])
 }
 
 model BillingInvoice {
-  id                        String        @id @default(uuid())
-  user_id                   String
-  user                      User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  subscription_id           String?
-  subscription              Subscription? @relation(fields: [subscription_id], references: [id], onDelete: SetNull)
-  stripe_invoice_id         String        @unique
-  stripe_subscription_id    String?
-  invoice_number            String?
-  status                    String
-  billing_reason            String?
-  currency                  String
-  amount_due                Int
-  amount_paid               Int
-  amount_remaining          Int
-  period_start              DateTime?
-  period_end                DateTime?
-  hosted_invoice_url        String?
-  invoice_pdf_url           String?
-  payment_email_sent_at     DateTime?
-  payment_email_message_id  String?
-  failure_email_sent_at     DateTime?
-  failure_email_message_id  String?
-  email_error               String?
-  paid_at                   DateTime?
-  created_at                DateTime      @default(now())
-  updated_at                DateTime      @updatedAt
+  id                       String        @id @default(uuid())
+  user_id                  String
+  user                     User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  subscription_id          String?
+  subscription             Subscription? @relation(fields: [subscription_id], references: [id], onDelete: SetNull)
+  stripe_invoice_id        String        @unique
+  stripe_subscription_id   String?
+  invoice_number           String?
+  status                   String
+  billing_reason           String?
+  currency                 String
+  amount_due               Int
+  amount_paid              Int
+  amount_remaining         Int
+  period_start             DateTime?
+  period_end               DateTime?
+  hosted_invoice_url       String?
+  invoice_pdf_url          String?
+  payment_email_sent_at    DateTime?
+  payment_email_message_id String?
+  failure_email_sent_at    DateTime?
+  failure_email_message_id String?
+  email_error              String?
+  paid_at                  DateTime?
+  created_at               DateTime      @default(now())
+  updated_at               DateTime      @updatedAt
 
   @@index([user_id, created_at])
   @@index([stripe_subscription_id])
@@ -1073,17 +1555,17 @@ model BillingInvoice {
 }
 
 model PlanUsage {
-  id                  String   @id @default(uuid())
-  user_id             String
-  user                User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  prompt_count        Int      @default(0)
-  project_count       Int      @default(0)
-  competitor_count    Int      @default(0)
-  monthly_runs_used   Int      @default(0)
-  period_start        DateTime
-  period_end          DateTime
-  created_at          DateTime @default(now())
-  updated_at          DateTime @updatedAt
+  id                String   @id @default(uuid())
+  user_id           String
+  user              User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  prompt_count      Int      @default(0)
+  project_count     Int      @default(0)
+  competitor_count  Int      @default(0)
+  monthly_runs_used Int      @default(0)
+  period_start      DateTime
+  period_end        DateTime
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
 
   @@unique([user_id, period_start, period_end])
   @@index([user_id, period_start, period_end])
@@ -1107,58 +1589,57 @@ model CreditLedgerEntry {
 }
 
 model HelpCenter {
-  id          String   @id @default(uuid())
-  email       String
-  subject     String
-  message     String
+  id      String @id @default(uuid())
+  email   String
+  subject String
+  message String
 
-  user_id     String
-  user        User     @relation(fields: [user_id], references: [id])
+  user_id String
+  user    User   @relation(fields: [user_id], references: [id])
 
-  is_resolved Boolean  @default(false)
+  is_resolved Boolean @default(false)
 
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
   @@index([user_id])
   @@index([is_resolved])
 }
 
-
 model BookDemo {
-  id          String     @id @default(uuid())
+  id String @id @default(uuid())
 
-  name        String
-  email       String
-  company     String?
-  notes       String?
+  name    String
+  email   String
+  company String?
+  notes   String?
 
-  scheduledAt DateTime
-  timezone    String
-  countryCode String?
-  countryName String?
+  scheduledAt    DateTime
+  timezone       String
+  countryCode    String?
+  countryName    String?
   localTimeLabel String?
   istTimeLabel   String?
 
-  status      DemoStatus @default(PENDING)
+  status DemoStatus @default(PENDING)
 
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([scheduledAt])
 }
 
 model PublicChatLead {
-  id          String   @id @default(uuid())
-  name        String?
-  email       String?
-  company     String?
-  message     String
-  topic       String?
-  page_path   String?
-  user_agent  String?
-  ip_hash     String?
-  created_at  DateTime @default(now())
+  id         String   @id @default(uuid())
+  name       String?
+  email      String?
+  company    String?
+  message    String
+  topic      String?
+  page_path  String?
+  user_agent String?
+  ip_hash    String?
+  created_at DateTime @default(now())
 
   @@index([email, created_at])
   @@index([topic, created_at])
@@ -1166,7 +1647,8 @@ model PublicChatLead {
 }
 
 model CreditTransaction {
-  id          String   @id @default(uuid())
+  id              String   @id @default(uuid())
+  idempotency_key String?  @unique
   user_id     String
   user        User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
   amount      Int
@@ -1180,14 +1662,14 @@ model CreditTransaction {
 }
 
 model CreditBucket {
-  id               String   @id @default(uuid())
+  id               String    @id @default(uuid())
   user_id          String
-  user             User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user             User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
   source           String
   amount_remaining Int
   expires_at       DateTime?
-  created_at       DateTime @default(now())
-  updated_at       DateTime @updatedAt
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
 
   @@index([user_id, expires_at])
   @@index([user_id, created_at])
@@ -1200,7 +1682,7 @@ model RazorpayOrder {
   razorpay_order_id   String   @unique
   razorpay_payment_id String?  @unique
   amount_inr_paise    Int
-  credits_to_award   Int
+  credits_to_award    Int
   status              String   @default("PENDING")
   idempotency_key     String?  @unique
   created_at          DateTime @default(now())
@@ -1208,4 +1690,626 @@ model RazorpayOrder {
 
   @@index([user_id, created_at])
   @@index([status, created_at])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SEO V2 Models
+// ═══════════════════════════════════════════════════════════════════════════════
+
+model SeoCrawlJob {
+  id                 String         @id @default(uuid())
+  project_id         String
+  project            Project        @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  user_id            String
+  user               User           @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  url                String
+  mode               String         @default("STANDARD") // QUICK | STANDARD | DEEP
+  max_pages          Int            @default(100)
+  status             SeoV2JobStatus @default(QUEUED)
+  pages_crawled      Int            @default(0)
+  pages_queued       Int            @default(0)
+  pages_failed       Int            @default(0)
+  crawl_coverage     Float?
+  credits_reserved   Int            @default(0)
+  credits_spent      Int            @default(0)
+  error_reason       String?
+  partial_reason     String?
+  robots_txt_url     String?
+  robots_txt_raw     String?
+  sitemap_urls_found Int            @default(0)
+  started_at         DateTime?
+  completed_at       DateTime?
+  created_at         DateTime       @default(now())
+  updated_at         DateTime       @updatedAt
+
+  audit SeoV2Audit?
+
+  @@index([project_id, created_at])
+  @@index([user_id, created_at])
+  @@index([status, created_at])
+}
+
+model SeoV2Audit {
+  id              String      @id @default(uuid())
+  crawl_job_id    String      @unique
+  crawl_job       SeoCrawlJob @relation(fields: [crawl_job_id], references: [id], onDelete: Cascade)
+  project_id      String
+  project         Project     @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  url             String
+  is_partial      Boolean     @default(false)
+  crawl_coverage  Float       @default(0)
+  pages_crawled   Int         @default(0)
+  pages_failed    Int         @default(0)
+  issues_count    Int         @default(0)
+  critical_count  Int         @default(0)
+  high_count      Int         @default(0)
+  medium_count    Int         @default(0)
+  low_count       Int         @default(0)
+  technical_score Int?
+  confidence      Float       @default(0)
+  compared_to_id  String? // previous audit id for diff
+  created_at      DateTime    @default(now())
+  updated_at      DateTime    @updatedAt
+
+  pages  SeoV2Page[]
+  issues SeoV2Issue[]
+
+  @@index([project_id, created_at])
+}
+
+model SeoV2Page {
+  id                  String              @id @default(uuid())
+  audit_id            String
+  audit               SeoV2Audit          @relation(fields: [audit_id], references: [id], onDelete: Cascade)
+  url                 String
+  canonical_url       String?
+  status_code         Int?
+  error_code          SeoV2CrawlErrorCode @default(NONE)
+  redirect_chain      Json                @default("[]")
+  crawl_depth         Int                 @default(0)
+  inbound_links_count Int                 @default(0)
+  is_orphan           Boolean             @default(false)
+  indexable           Boolean             @default(true)
+  robots_blocked      Boolean             @default(false)
+  noindex             Boolean             @default(false)
+  canonical_is_self   Boolean             @default(true)
+  title               String?
+  title_length        Int?
+  meta_description    String?
+  meta_desc_length    Int?
+  h1                  String?
+  h1_count            Int                 @default(0)
+  h2_count            Int                 @default(0)
+  word_count          Int                 @default(0)
+  content_hash        String?
+  has_viewport        Boolean             @default(false)
+  has_schema          Boolean             @default(false)
+  schema_types        String[]            @default([])
+  images_total        Int                 @default(0)
+  images_missing_alt  Int                 @default(0)
+  internal_links      Int                 @default(0)
+  external_links      Int                 @default(0)
+  page_size_bytes     Int?
+  response_time_ms    Int?
+  created_at          DateTime            @default(now())
+
+  issues SeoV2Issue[]
+
+  @@index([audit_id])
+  @@index([audit_id, status_code])
+  @@index([audit_id, indexable])
+  @@index([url])
+}
+
+model SeoV2Issue {
+  id                   String                 @id @default(uuid())
+  audit_id             String
+  audit                SeoV2Audit             @relation(fields: [audit_id], references: [id], onDelete: Cascade)
+  page_id              String?
+  page                 SeoV2Page?             @relation(fields: [page_id], references: [id], onDelete: SetNull)
+  category             SeoV2IssueCategory
+  severity             SeoV2IssueSeverity
+  title                String
+  description          String
+  evidence             String
+  why_it_matters       String
+  recommended_fix      String
+  affected_pages_count Int                    @default(1)
+  example_urls         String[]               @default([])
+  priority_score       Int                    @default(50)
+  verification         SeoV2IssueVerification @default(UNVERIFIED)
+  verified_at          DateTime?
+  created_at           DateTime               @default(now())
+  updated_at           DateTime               @updatedAt
+
+  @@index([audit_id, category])
+  @@index([audit_id, severity])
+  @@index([page_id])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Phase 2: Google Search Console
+// ═══════════════════════════════════════════════════════════════════════════════
+
+model GscConnection {
+  id                  String    @id @default(uuid())
+  project_id          String
+  project             Project   @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  user_id             String
+  user                User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  access_token        String
+  refresh_token       String
+  token_expires_at    DateTime
+  scope               String
+  selected_site_url   String?
+  selected_at         DateTime?
+  last_synced_at      DateTime?
+  data_freshness_date DateTime?
+  disconnected_at     DateTime?
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+
+  data_rows GscDataRow[]
+
+  @@unique([project_id, user_id])
+  @@index([project_id, user_id])
+  @@index([user_id, disconnected_at])
+}
+
+model GscDataRow {
+  id            String        @id @default(uuid())
+  project_id    String
+  project       Project       @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  connection_id String
+  connection    GscConnection @relation(fields: [connection_id], references: [id], onDelete: Cascade)
+  query         String
+  page          String
+  date          DateTime
+  country       String        @default("")
+  device        String        @default("")
+  clicks        Int           @default(0)
+  impressions   Int           @default(0)
+  ctr           Float         @default(0)
+  position      Float         @default(0)
+  updated_at    DateTime      @default(now()) @updatedAt
+
+  @@unique([project_id, query, page, date, country, device])
+  @@index([project_id, date])
+  @@index([project_id, query, date])
+  @@index([project_id, page, date])
+  @@index([connection_id, date])
+}
+
+// ─── WhatsApp Campaigns ───────────────────────────────────────────────────────
+
+enum WhatsAppCampaignStatus {
+  DRAFT
+  SCHEDULED
+  RUNNING
+  COMPLETED
+  PAUSED
+  FAILED
+}
+
+enum WhatsAppTemplateStatus {
+  APPROVED
+  PENDING
+  REJECTED
+  PAUSED
+  DISABLED
+}
+
+enum WhatsAppTemplateCategory {
+  MARKETING
+  UTILITY
+  AUTHENTICATION
+}
+
+enum WhatsAppRecipientStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum WhatsAppQualityRating {
+  HIGH
+  MEDIUM
+  LOW
+  UNKNOWN
+}
+
+model WhatsAppAccount {
+  id                   String                @id @default(uuid())
+  user_id              String
+  project_id           String                @unique
+  waba_id              String
+  phone_number_id      String                @unique
+  display_phone        String
+  display_name         String
+  access_token         String                // Encrypted Meta System User Token
+  quality_rating       WhatsAppQualityRating @default(UNKNOWN)
+  messaging_limit      Int                   @default(1000)
+  profile_pic_url      String?
+  profile_pic_handle   String?
+  about                String?
+  business_category    String?
+  business_description String?
+  website              String?
+  address              String?
+  is_green_badge       Boolean               @default(false)
+  created_at           DateTime              @default(now())
+  updated_at           DateTime              @updatedAt
+
+  user      User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  project   Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  campaigns  WhatsAppCampaign[]
+  templates  WhatsAppTemplate[]
+  bot_config WhatsAppBotConfig?
+  leads      WhatsAppAppointmentLead[]
+
+  @@index([user_id])
+}
+
+model WhatsAppTemplate {
+  id          String                   @id @default(uuid())
+  account_id  String
+  meta_id     String?                  // Meta's template ID after creation
+  name        String
+  language    String                   @default("en")
+  category    WhatsAppTemplateCategory @default(MARKETING)
+  status      WhatsAppTemplateStatus   @default(PENDING)
+  components  Json                     // Full Meta template component schema
+  created_at  DateTime                 @default(now())
+  updated_at  DateTime                 @updatedAt
+
+  account   WhatsAppAccount    @relation(fields: [account_id], references: [id], onDelete: Cascade)
+  campaigns WhatsAppCampaign[]
+
+  @@unique([account_id, name, language])
+  @@index([account_id, status])
+}
+
+model WhatsAppCampaign {
+  id                  String                    @id @default(uuid())
+  account_id          String
+  user_id             String
+  name                String
+  objective           String?                   // e.g. "Promotion", "Product Update"
+  status              WhatsAppCampaignStatus    @default(DRAFT)
+  template_id         String?
+  header_media_url    String?
+  header_media_type   String?                   // "IMAGE" | "DOCUMENT" | "VIDEO"
+  variable_mapping    Json?                     // CSV col -> template var mapping
+  total_recipients    Int                       @default(0)
+  sent_count          Int                       @default(0)
+  delivered_count     Int                       @default(0)
+  read_count          Int                       @default(0)
+  failed_count        Int                       @default(0)
+  estimated_cost_inr  Decimal?                  @db.Decimal(12, 2)
+  pace_per_second     Int                       @default(10)
+  scheduled_at        DateTime?
+  started_at          DateTime?
+  completed_at        DateTime?
+  error_message       String?
+  created_at          DateTime                  @default(now())
+  updated_at          DateTime                  @updatedAt
+
+  account    WhatsAppAccount              @relation(fields: [account_id], references: [id], onDelete: Cascade)
+  template   WhatsAppTemplate?            @relation(fields: [template_id], references: [id], onDelete: SetNull)
+  recipients WhatsAppCampaignRecipient[]
+
+  @@index([account_id, status])
+  @@index([user_id, created_at])
+}
+
+model WhatsAppCampaignRecipient {
+  id           String                  @id @default(uuid())
+  campaign_id  String
+  phone        String                  // "+91XXXXXXXXXX"
+  name         String?
+  variables    Json?                   // Template variable values for this recipient
+  status       WhatsAppRecipientStatus @default(QUEUED)
+  meta_msg_id  String?                 // wamid from Meta API response
+  error_code   String?
+  error_msg    String?
+  sent_at      DateTime?
+  delivered_at DateTime?
+  read_at      DateTime?
+  created_at   DateTime                @default(now())
+
+  campaign WhatsAppCampaign @relation(fields: [campaign_id], references: [id], onDelete: Cascade)
+
+  @@index([campaign_id, status])
+  @@index([campaign_id, phone])
+  @@index([meta_msg_id])
+}
+
+enum LeadStatus {
+  PENDING_CALL
+  CALLED
+  APPOINTMENT_CONFIRMED
+  NOT_INTERESTED
+  CANCELLED
+}
+
+model WhatsAppBotConfig {
+  id                   String   @id @default(uuid())
+  account_id           String   @unique
+  is_enabled           Boolean  @default(true)
+  business_name        String   @default("City Care Hospital")
+  business_type        String   @default("HOSPITAL")
+  greeting_message     String   @default("Namaste! Welcome to {business_name}. How can we assist you today?")
+  services_catalog     Json     // [{ id, name, desc, fee, doctors: [{ id, name, title, timing, fee }] }]
+  faq_knowledge_base   Json     // [{ question, answer, category }]
+  required_fields      Json     // ["name", "phone", "service", "doctor", "slot", "notes"]
+  escalation_phones    String[] // Staff phone numbers for instant WhatsApp alert
+  escalation_message   String?
+  confirmation_message String?
+  ai_fallback_enabled  Boolean  @default(true)
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
+
+  account WhatsAppAccount @relation(fields: [account_id], references: [id], onDelete: Cascade)
+}
+
+model WhatsAppAppointmentLead {
+  id                 String     @id @default(uuid())
+  account_id         String
+  patient_name       String
+  patient_phone      String
+  service_requested  String
+  doctor_requested   String?
+  preferred_time     String?
+  symptoms           String?
+  status             LeadStatus @default(PENDING_CALL)
+  escalated_to_phone String?
+  staff_notes        String?
+  created_at         DateTime   @default(now())
+  updated_at         DateTime   @updatedAt
+
+  account WhatsAppAccount @relation(fields: [account_id], references: [id], onDelete: Cascade)
+
+  @@index([account_id, status])
+  @@index([account_id, created_at])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Voice AI Campaigns (Indian Telephony & Healthcare/Business Playbooks)
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum VoicePlaybookType {
+  OPD_APPOINTMENT_CONFIRMATION
+  POST_DISCHARGE_CARE
+  LAB_REPORT_ALERT
+  PREVENTIVE_HEALTH_CAMP
+  CUSTOM_OUTREACH
+}
+
+enum VoiceCallStatus {
+  QUEUED
+  RINGING
+  IN_PROGRESS
+  COMPLETED
+  BUSY
+  NO_ANSWER
+  FAILED
+}
+
+enum VoiceOutcomeIntent {
+  CONFIRMED
+  RESCHEDULED
+  CANCELLED
+  URGENT_EMERGENCY_ESCALATION
+  CALLBACK_REQUESTED
+  NOT_INTERESTED
+  UNKNOWN
+}
+
+model VoiceAccount {
+  id              String   @id @default(uuid())
+  project_id      String   @unique
+  user_id         String
+  provider        String   @default("AZURE_EXOTEL") // AZURE_EXOTEL | PLIVO | TATA | SIMULATOR
+  caller_id       String   @default("+918045678900")
+  azure_speech_key String?
+  azure_region    String?  @default("centralindia")
+  exotel_sid      String?
+  exotel_token    String?
+  is_verified     Boolean  @default(true)
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  user            User               @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  project         Project            @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  campaigns       VoiceCampaign[]
+  agents          VoiceAgentConfig[]
+
+  @@index([user_id])
+}
+
+model VoiceAgentConfig {
+  id                   String            @id @default(uuid())
+  account_id           String
+  name                 String            @default("Telugu Receptionist (Shruti)")
+  playbook_type        VoicePlaybookType @default(OPD_APPOINTMENT_CONFIRMATION)
+  language             String            @default("te-IN") // te-IN, hi-IN, en-IN
+  voice_name           String            @default("te-IN-ShrutiNeural") // Azure Telugu Voice
+  system_prompt        String            @db.Text
+  emergency_keywords   String[]          @default(["chest pain", "fever", "emergency", "severe pain", "bleeding", "doctor"])
+  live_transfer_number String?           // e.g. "+919876543210"
+  created_at           DateTime          @default(now())
+  updated_at           DateTime          @updatedAt
+
+  account              VoiceAccount      @relation(fields: [account_id], references: [id], onDelete: Cascade)
+  campaigns            VoiceCampaign[]
+
+  @@index([account_id])
+}
+
+model VoiceCampaign {
+  id                String            @id @default(uuid())
+  account_id        String
+  agent_id          String
+  name              String
+  playbook_type     VoicePlaybookType @default(OPD_APPOINTMENT_CONFIRMATION)
+  status            String            @default("DRAFT") // DRAFT | QUEUED | IN_PROGRESS | PAUSED_TIME_WINDOW | COMPLETED
+  total_recipients  Int               @default(0)
+  called_count      Int               @default(0)
+  confirmed_count   Int               @default(0)
+  rescheduled_count Int               @default(0)
+  cancelled_count   Int               @default(0)
+  urgent_count      Int               @default(0)
+  failed_count      Int               @default(0)
+  concurrent_limit  Int               @default(10)      // Max 10-12 concurrent lines
+  scheduled_at      DateTime?
+  started_at        DateTime?
+  completed_at      DateTime?
+  created_at        DateTime          @default(now())
+  updated_at        DateTime          @updatedAt
+
+  account           VoiceAccount      @relation(fields: [account_id], references: [id], onDelete: Cascade)
+  agent             VoiceAgentConfig  @relation(fields: [agent_id], references: [id], onDelete: Cascade)
+  records           VoiceCallRecord[]
+
+  @@index([account_id, status])
+}
+
+model VoiceCallRecord {
+  id               String             @id @default(uuid())
+  campaign_id      String
+  patient_name     String
+  patient_phone    String
+  doctor_name      String?
+  scheduled_slot   String?
+  status           VoiceCallStatus    @default(QUEUED)
+  outcome_intent   VoiceOutcomeIntent @default(UNKNOWN)
+  duration_seconds Int                @default(0)
+  ai_summary       String?            @db.Text
+  transcript       Json?              // [{ sender: "ai"|"user", text: "...", time: "..." }]
+  recording_url    String?
+  is_urgent        Boolean            @default(false)
+  created_at       DateTime           @default(now())
+  updated_at       DateTime           @updatedAt
+
+  campaign         VoiceCampaign      @relation(fields: [campaign_id], references: [id], onDelete: Cascade)
+
+  @@index([campaign_id, status])
+  @@index([campaign_id, outcome_intent])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Email Campaigns (AWS SES / Brevo)
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum EmailCampaignStatus {
+  DRAFT
+  SCHEDULED
+  RUNNING
+  COMPLETED
+  PAUSED
+  FAILED
+}
+
+enum EmailRecipientStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  BOUNCED
+  COMPLAINT
+  OPENED
+  CLICKED
+  FAILED
+}
+
+model EmailAccount {
+  id              String   @id @default(uuid())
+  project_id      String   @unique
+  user_id         String
+  provider        String   @default("AWS_SES") // AWS_SES | BREVO
+  from_name       String
+  from_email      String
+  reply_to_email  String?
+  is_verified     Boolean  @default(false)
+  aws_region      String?  @default("ap-south-1")
+  aws_access_key  String?
+  aws_secret_key  String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  user            User            @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  project         Project         @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  campaigns       EmailCampaign[]
+  templates       EmailTemplate[]
+
+  @@index([user_id])
+}
+
+model EmailTemplate {
+  id          String   @id @default(uuid())
+  account_id  String
+  name        String
+  subject     String
+  html_body   String   @db.Text
+  design_json Json?    // To store drag-and-drop editor state if needed
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  account   EmailAccount    @relation(fields: [account_id], references: [id], onDelete: Cascade)
+  campaigns EmailCampaign[]
+
+  @@unique([account_id, name])
+}
+
+model EmailCampaign {
+  id                 String              @id @default(uuid())
+  account_id         String
+  user_id            String
+  name               String
+  status             EmailCampaignStatus @default(DRAFT)
+  template_id        String?
+  total_recipients   Int                 @default(0)
+  sent_count         Int                 @default(0)
+  delivered_count    Int                 @default(0)
+  opened_count       Int                 @default(0)
+  clicked_count      Int                 @default(0)
+  bounced_count      Int                 @default(0)
+  complaint_count    Int                 @default(0)
+  failed_count       Int                 @default(0)
+  scheduled_at       DateTime?
+  started_at         DateTime?
+  completed_at       DateTime?
+  error_message      String?
+  created_at         DateTime            @default(now())
+  updated_at         DateTime            @updatedAt
+
+  account    EmailAccount             @relation(fields: [account_id], references: [id], onDelete: Cascade)
+  template   EmailTemplate?           @relation(fields: [template_id], references: [id], onDelete: SetNull)
+  recipients EmailCampaignRecipient[]
+
+  @@index([account_id, status])
+  @@index([user_id, created_at])
+}
+
+model EmailCampaignRecipient {
+  id           String               @id @default(uuid())
+  campaign_id  String
+  email        String
+  name         String?
+  variables    Json?                // Template variable values for this recipient
+  status       EmailRecipientStatus @default(QUEUED)
+  message_id   String?              // Message ID from provider
+  error_msg    String?
+  sent_at      DateTime?
+  delivered_at DateTime?
+  opened_at    DateTime?
+  clicked_at   DateTime?
+  created_at   DateTime             @default(now())
+
+  campaign EmailCampaign @relation(fields: [campaign_id], references: [id], onDelete: Cascade)
+
+  @@index([campaign_id, status])
+  @@index([campaign_id, email])
+  @@index([message_id])
 }

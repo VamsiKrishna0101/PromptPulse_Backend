@@ -20,4 +20,7 @@ export async function refreshRunStatus(run_id: string) {
             completed_at: new Date(),
         },
     })
+    await import("../seo/onboarding/onboarding_service")
+        .then(module => module.finalizeOnboardingVisibility(run_id))
+        .catch(error => console.error("Could not finalize SEO onboarding visibility", error))
 }

@@ -30,9 +30,13 @@ import redditIntelligenceRoutes from './src/features/reddit_intelligence/reddit_
 import brandPreferenceRoutes from './src/features/brand_preferences/brand_preferences_routes'
 import landingChatRoutes from './src/features/landing_chat/landing_chat_routes'
 import agencyRoutes from './src/features/agency/agency_routes'
-import seoRoutes from './src/features/seo/seo_routes'
 import { acceptInvitationController } from './src/features/agency/agency_controller'
 import paymentsRoutes from './src/features/payments/payments_routes'
+import seoRoutes from './src/features/seo/seo_routes'
+import whatsappCampaignRoutes from './src/features/campaigns/whatsapp/whatsapp_routes'
+import voiceCampaignRoutes from './src/features/campaigns/voice/voice_routes'
+import emailCampaignRoutes from './src/features/campaigns/email/email_routes'
+import { webhookController as whatsappWebhookController } from './src/features/campaigns/whatsapp/whatsapp_controller'
 import { createStandardOrderController, verifyStandardPaymentController } from './src/features/payments/payments_controller'
 import { stripeWebhookController } from './src/features/subscription/subscription_controller'
 import { requireAdmin, requireAuth } from './src/middleware/auth'
@@ -64,7 +68,11 @@ app.post('/api/payments/razorpay/webhook', express.raw({ type: 'application/json
     // re-import inline to keep the raw body intact
     import('./src/features/payments/payments_controller').then(m => m.razorpayWebhookController(req, res)).catch(() => res.status(500).json({ error: 'webhook handler failed' }))
 })
-app.use(express.json())
+app.use(express.json({
+    verify: (req, _res, buffer) => {
+        ;(req as express.Request & { rawBody?: Buffer }).rawBody = Buffer.from(buffer)
+    },
+}))
 
 app.use('/api/auth', authRoutes)
 app.post('/api/agency/invitations/accept', acceptInvitationController)
@@ -91,11 +99,17 @@ app.use('/api/customer-support-agent', requireAuth, customerSupportAgentRoutes)
 app.use('/api/reddit-intelligence', requireAuth, redditIntelligenceRoutes)
 app.use('/api/brand-preferences', requireAuth, brandPreferenceRoutes)
 app.use('/api/agency', requireAuth, agencyRoutes)
-app.use('/api/seo', requireAuth, seoRoutes)
 app.post('/api/create-order', requireAuth, createStandardOrderController)
 app.post('/api/verify-payment', requireAuth, verifyStandardPaymentController)
 app.use('/api/payments', paymentsRoutes)
+app.use('/api/seo', requireAuth, seoRoutes)
 app.use('/api/admin', requireAuth, requireAdmin, adminRoutes)
+// WhatsApp campaigns — webhook is public; all other routes are protected
+app.get('/api/campaigns/whatsapp/webhook', whatsappWebhookController)
+app.post('/api/campaigns/whatsapp/webhook', whatsappWebhookController)
+app.use('/api/campaigns/whatsapp', requireAuth, whatsappCampaignRoutes)
+app.use('/api/campaigns/voice', requireAuth, voiceCampaignRoutes)
+app.use('/api/campaigns/email', requireAuth, emailCampaignRoutes)
 app.use('/api/webanalytics', webAnalyticsRoutes)
 app.use('/api/demo', demoRoutes)
 app.use('/api/landing-chat', landingChatRoutes)

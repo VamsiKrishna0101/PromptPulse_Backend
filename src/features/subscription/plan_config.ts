@@ -50,35 +50,39 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     // No base credits — agencies buy credits as they consume them across client projects.
 }
 
-export const PLAN_PRICING: Record<Plan, { name: string; monthly_price_usd: number | "custom"; trial_days: number | null; summary: string }> = {
+export const PLAN_PRICING: Record<Plan, { name: string; monthly_price_inr: number; annual_price_inr: number; trial_days: number | null; summary: string }> = {
     FREE: {
         name: "Free",
-        monthly_price_usd: 0,
+        monthly_price_inr: 0,
+        annual_price_inr: 0,
         trial_days: null,
         summary: "Limited workspace to test PromptPulse before upgrading.",
     },
     STARTER: {
         name: "Starter",
-        monthly_price_usd: 29,
+        monthly_price_inr: 2499,
+        annual_price_inr: 23988,
         trial_days: 14,
         summary: "Essentials for one brand getting serious about AI visibility.",
     },
     GROWTH: {
         name: "Growth",
-        monthly_price_usd: 59,
+        monthly_price_inr: 4999,
+        annual_price_inr: 47988,
         trial_days: 14,
         summary: "Best fit for growing SaaS teams that need daily monitoring.",
     },
     PRO: {
         name: "Pro",
-        monthly_price_usd: 129,
+        monthly_price_inr: 9999,
+        annual_price_inr: 95988,
         trial_days: 14,
         summary: "For agencies and teams managing more markets and competitors.",
     },
 }
 
 export const CREDIT_COSTS = {
-    prompt_run: 1,
+    prompt_run: 3, // legacy individual fallback; live charges use the account-aware policy
     dashboard_export_xlsx: 1,
     dashboard_export_pdf: 0,
     geo_article_pdf: 0,
