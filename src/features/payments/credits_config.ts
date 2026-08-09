@@ -9,12 +9,12 @@ import { AccountType } from "@prisma/client"
 /** Central product policy. Always resolve the billing owner's account type. */
 export const ACCOUNT_CREDIT_POLICY = {
     [AccountType.SINGLE]: {
-        prompt_run: 3,
+        prompt_run: 1,
         seo_provider_credits_per_usd: 180,
         site_audit: { quick: 4, standard: 8, deep: 15 },
     },
     [AccountType.AGENCY]: {
-        prompt_run: 2,
+        prompt_run: 1,
         seo_provider_credits_per_usd: 150,
         site_audit: { quick: 3, standard: 6, deep: 12 },
     },
