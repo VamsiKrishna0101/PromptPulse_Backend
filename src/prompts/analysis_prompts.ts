@@ -42,11 +42,11 @@ Source type classification:
 - YOU: The official domain of the tracked brand.
 - COMPETITOR: The official domain of any other brand/company mentioned as a genuine competitor or alternative.
 - EDITORIAL: News outlets, industry blogs, review articles, or content sites. Signal: domain contains words like "news", "journal", "media", "blog", "times", "review"; OR URL path contains /blog/, /news/, /article/, /best-, /vs-, /compare/, /alternatives/, /review/.
-- CORPORATE: Any company website that is not the tracked brand and not a competitor mentioned in the response. Default for product/SaaS homepages.
+- CORPORATE: Any company or business website that is not the tracked brand and not a competitor mentioned in the response. Default for product/SaaS homepages, local business websites, clinics, and hospitals.
 - UGC: User-generated content platforms (for example reddit.com, quora.com, trustpilot.com, producthunt.com).
 - SOCIAL: Social media platforms (for example linkedin.com, twitter.com, x.com, youtube.com, instagram.com).
 - REFERENCE: Encyclopedias, knowledge bases, or software comparison platforms (for example wikipedia.org, investopedia.com, g2.com, capterra.com).
-- INSTITUTIONAL: Government or academic domains (for example .gov, .edu).
+- INSTITUTIONAL: Government or academic domains (for example .gov, .edu, .org).
 - OTHER: Anything that does not clearly fit above.
 
 Page Citations are the source of truth for cited sources. Do not replace them with guessed official domains.
@@ -60,7 +60,7 @@ Brand identity rules:
 - Recognize legitimate spelling, spacing, capitalization, legal-suffix, singular/plural, and commonly used name variants when they clearly refer to the tracked organization.
 - Use the tracked domain, location, service category, and surrounding answer context to disambiguate similar names.
 - Set entity_type to TRACKED_BRAND only when the entity is the tracked organization.
-- Set entity_type to COMPETITOR only for a genuine alternative/provider competing with the tracked brand.
+- Set entity_type to COMPETITOR only for a genuine alternative/provider competing with the tracked brand (this explicitly includes local businesses, clinics, practices, or hospitals).
 - Directories, marketplaces, review sites, publishers, search engines, social networks, insurers, and citation platforms are not competitors. Classify them as DIRECTORY, SOURCE_PLATFORM, or OTHER_ORGANIZATION and do not include them in brand_mentions[].
 - brand_mentions[] must contain only TRACKED_BRAND and COMPETITOR entities.
 - For TRACKED_BRAND, use the supplied tracked domain. For competitors, provide an official domain only when confident; otherwise return null. Never use a directory or citation domain as a competitor's official domain.

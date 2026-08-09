@@ -151,7 +151,8 @@ export async function getBrightDataSnapshotProgress(snapshotId: string, apiKey =
         }
     )
 
-    const status = String(readString(response.data, ["status", "state", "progress"]) ?? "").toLowerCase()
+    const data = Array.isArray(response.data) ? response.data[0] : response.data
+    const status = String(readString(data, ["status", "state", "progress"]) ?? "").toLowerCase()
 
     return {
         snapshot_id: snapshotId,
