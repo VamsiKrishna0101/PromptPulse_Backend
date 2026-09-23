@@ -1,10 +1,11 @@
 import { Prisma } from "@prisma/client"
-import { embedText, generateText, generateTextStream } from "../llm/gemini_service"
-import { ingestProjectKnowledge } from "../rag/ingestion_service"
-import { searchSaraKnowledge, type QdrantPayload } from "../rag/qdrant_service"
+import { generateText, generateTextStream } from "../llm/gemini_service"
 import prisma from "../../lib/prisma"
 import { buildSaraContextPacket, type SaraContextPacket } from "./context/sara_context_service"
-import { getEffectivePlanAccess } from "../subscription/entitlements"
+
+// Qdrant RAG has been removed — Sara context is served entirely from the DB
+// via the internal MCP context packet (performance, sources, actions, plan, project).
+type QdrantPayload = Record<string, unknown>
 
 type SaraDebugTrace = {
     internal_mcp: {
@@ -25,28 +26,23 @@ async function checkSaraDailyLimit(_user_id: string) {
     // No limits in PAYG model
 }
 
-export async function reindexSaraProject(project_id: string, options?: {
+// RAG reindex is a no-op — Qdrant cluster removed, data comes from DB
+export async function reindexSaraProject(_project_id: string, _options?: {
     chat_limit?: number
     source_limit?: number
 }) {
-    return ingestProjectKnowledge(project_id, options)
+    return { message: "RAG indexing is disabled. Sara uses DB-backed context only." }
 }
 
-export async function searchSaraProject(input: {
+// RAG search is a no-op — always returns empty, context comes from internal MCP (DB)
+export async function searchSaraProject(_input: {
     user_id: string
     project_id: string
     query: string
     limit?: number
     document_types?: string[]
-}) {
-    const vector = await embedText(input.query)
-    return searchSaraKnowledge({
-        vector,
-        user_id: input.user_id,
-        project_id: input.project_id,
-        limit: input.limit,
-        document_types: input.document_types
-    })
+}): Promise<{ id: string | number; score: number; payload?: QdrantPayload }[]> {
+    return []
 }
 
 export async function chatWithSara(input: {

@@ -163,10 +163,10 @@ export async function analyzeResponse(
     // Local development may still use the legacy providers when explicitly run
     // without Bedrock credentials. Production never silently bypasses Kimi.
     try {
-        const result = await model.generateContent([
-            { text: systemPrompt },
-            { text: userPrompt },
-        ])
+        const result = await model.generateContent({
+            contents: [{ role: 'user', parts: [{ text: systemPrompt }, { text: userPrompt }] }],
+            generationConfig: { maxOutputTokens: 8192 }
+        })
 
         const parsed = parseJson<AnalysisResult>(result.response.text())
         return { ...normalizeAnalysisResult(parsed, raw_response, brand_name, brand_url, citations), ai_model }
@@ -743,6 +743,7 @@ async function analyzeResponseWithGroq(systemPrompt: string, userPrompt: string)
         {
             model: GROQ_ANALYSIS_MODEL,
             temperature: 0,
+            max_tokens: 8192,
             response_format: { type: 'json_object' },
             messages: [
                 { role: 'system', content: systemPrompt },

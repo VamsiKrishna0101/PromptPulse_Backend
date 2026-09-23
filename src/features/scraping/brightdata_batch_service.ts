@@ -112,9 +112,16 @@ export async function pollBrightDataBatches(options: {
         take: limit,
     })
 
+    const startTime = Date.now()
+    const TIME_LIMIT_MS = 8 * 60 * 1000 // 8 minutes
+
     const results: Awaited<ReturnType<typeof pollOneBatch>>[] = []
     for (const batch of batches) {
-        results.push(await pollOneBatch(batch))
+        if (Date.now() - startTime > TIME_LIMIT_MS) {
+            console.log(`[brightdata-poll] Stopping early to avoid Cloud Run timeout.`)
+            break
+        }
+        results.push(await pollOneBatch(batch, startTime, TIME_LIMIT_MS))
     }
 
     return {
@@ -222,7 +229,7 @@ async function createAndTriggerBatch(engine: Engine, geo: string, jobs: ScrapeJo
     }
 }
 
-async function pollOneBatch(batch: BrightDataBatchWithItems) {
+async function pollOneBatch(batch: BrightDataBatchWithItems, startTime = Date.now(), timeLimitMs = 480000) {
     if (!batch.snapshot_id) {
         await markWholeBatchFailed(batch.id, batch.items.map(item => item.scrape_job), BrightDataBatchStatus.FAILED, "BrightData batch has no snapshot_id.")
         return { id: batch.id, status: BrightDataBatchStatus.FAILED, error_reason: "Missing snapshot_id" }
@@ -256,10 +263,10 @@ async function pollOneBatch(batch: BrightDataBatchWithItems) {
     }
 
     const records = await downloadBrightDataSnapshot(batch.snapshot_id)
-    return completeBatchFromRecords(batch, records)
+    return completeBatchFromRecords(batch, records, startTime, timeLimitMs)
 }
 
-async function completeBatchFromRecords(batch: BrightDataBatchWithItems, records: BrightDataRecord[]) {
+async function completeBatchFromRecords(batch: BrightDataBatchWithItems, records: BrightDataRecord[], startTime = Date.now(), timeLimitMs = 480000) {
     const uiEngine = engineMap[batch.engine]
     const recordsByIndex = mapRecordsByIndex(records, batch.items)
     let completed = 0
@@ -335,72 +342,85 @@ async function completeBatchFromRecords(batch: BrightDataBatchWithItems, records
             continue
         }
 
-        for (const candidate of group.items) {
-            try {
-                const { item, result } = candidate
-                const chat = await runPrompt({
-                    prompt_id: item.scrape_job.prompt_id,
-                    run_id: item.scrape_job.run_id,
-                    geo_variant_id: item.scrape_job.geo_variant_id,
-                    geo_country_code: item.scrape_job.geo_country_code,
-                    geo_country_name: item.scrape_job.geo_country_name,
-                    geo_city: item.scrape_job.geo_city,
-                    raw_response: result.answer_text,
-                    ai_model: result.model_label,
-                    screenshot_path: result.screenshot_path,
-                    citations: result.citations,
-                    enqueue_source_enrichment: process.env.SOURCE_ENRICHMENT_AUTO_ENQUEUE !== "false",
-                    ingest_chat: false,
-                })
-
-                await prisma.$transaction([
-                    prisma.prompt.update({
-                        where: { id: item.scrape_job.prompt_id },
-                        data: { last_run_at: new Date() },
-                    }),
-                    prisma.scrapeJob.update({
-                        where: { id: item.scrape_job.id },
-                        data: {
-                            status: ScrapeJobStatus.SUCCESS,
-                            chat_id: chat.id,
-                            answer_text: result.answer_text,
-                            raw_text: null, // Not stored - saves significant DB space (was storing full BrightData JSON)
-                            citations: result.citations,
-                            screenshot_path: result.screenshot_path,
-                            error_reason: result.error_reason,
-                            completed_at: new Date(),
-                        },
-                    }),
-                    prisma.brightDataBatchItem.update({
-                        where: { id: item.id },
-                        data: {
-                            status: BrightDataBatchItemStatus.SUCCESS,
-                            error_reason: null,
-                        },
-                    }),
-                ])
-
-                completed += 1
-            } catch (error) {
-                failed += 1
-                await refundCredits({
-                    userId: group.user_id,
-                    amount: unitCreditCost,
-                    action: "PROMPT_RUN",
-                    description: "Refund for AI result that could not be analyzed",
-                    idempotencyKey: `${groupChargeKey}:failed:${candidate.item.scrape_job.id}`,
-                    metadata: { run_id: group.run_id, scrape_job_id: candidate.item.scrape_job.id },
-                }).catch((refundError: unknown) => console.error("Could not refund failed AI analysis", refundError))
-                await markBatchItemFailed(candidate.item.id, candidate.item.scrape_job, normalizeErrorMessage(error))
+        // Process items concurrently in chunks
+        const chunkSize = 5
+        for (let i = 0; i < group.items.length; i += chunkSize) {
+            if (Date.now() - startTime > timeLimitMs) {
+                console.log(`[brightdata-poll] Time limit reached inside completeBatchFromRecords, breaking early.`)
+                break
             }
+
+            const chunk = group.items.slice(i, i + chunkSize)
+            await Promise.all(chunk.map(async (candidate) => {
+                try {
+                    const { item, result } = candidate
+                    const chat = await runPrompt({
+                        prompt_id: item.scrape_job.prompt_id,
+                        run_id: item.scrape_job.run_id,
+                        geo_variant_id: item.scrape_job.geo_variant_id,
+                        geo_country_code: item.scrape_job.geo_country_code,
+                        geo_country_name: item.scrape_job.geo_country_name,
+                        geo_city: item.scrape_job.geo_city,
+                        raw_response: result.answer_text,
+                        ai_model: result.model_label,
+                        screenshot_path: result.screenshot_path,
+                        citations: result.citations,
+                        enqueue_source_enrichment: process.env.SOURCE_ENRICHMENT_AUTO_ENQUEUE !== "false",
+                        ingest_chat: false,
+                    })
+
+                    await prisma.$transaction([
+                        prisma.prompt.update({
+                            where: { id: item.scrape_job.prompt_id },
+                            data: { last_run_at: new Date() },
+                        }),
+                        prisma.scrapeJob.update({
+                            where: { id: item.scrape_job.id },
+                            data: {
+                                status: ScrapeJobStatus.SUCCESS,
+                                chat_id: chat.id,
+                                answer_text: result.answer_text,
+                                raw_text: null, // Not stored - saves significant DB space (was storing full BrightData JSON)
+                                citations: result.citations,
+                                screenshot_path: result.screenshot_path,
+                                error_reason: result.error_reason,
+                                completed_at: new Date(),
+                            },
+                        }),
+                        prisma.brightDataBatchItem.update({
+                            where: { id: item.id },
+                            data: {
+                                status: BrightDataBatchItemStatus.SUCCESS,
+                                error_reason: null,
+                            },
+                        }),
+                    ])
+
+                    completed += 1
+                } catch (error) {
+                    failed += 1
+                    await refundCredits({
+                        userId: group.user_id,
+                        amount: unitCreditCost,
+                        action: "PROMPT_RUN",
+                        description: "Refund for AI result that could not be analyzed",
+                        idempotencyKey: `${groupChargeKey}:failed:${candidate.item.scrape_job.id}`,
+                        metadata: { run_id: group.run_id, scrape_job_id: candidate.item.scrape_job.id },
+                    }).catch((refundError: unknown) => console.error("Could not refund failed AI analysis", refundError))
+                    await markBatchItemFailed(candidate.item.id, candidate.item.scrape_job, normalizeErrorMessage(error))
+                }
+            }))
         }
     }
 
-    const status = completed === batch.items.length
-        ? BrightDataBatchStatus.SUCCESS
-        : completed > 0
-            ? BrightDataBatchStatus.PARTIAL_SUCCESS
-            : BrightDataBatchStatus.FAILED
+    const timeLimitReached = Date.now() - startTime > timeLimitMs
+    const status = timeLimitReached
+        ? BrightDataBatchStatus.RUNNING
+        : completed === batch.items.length
+            ? BrightDataBatchStatus.SUCCESS
+            : completed > 0
+                ? BrightDataBatchStatus.PARTIAL_SUCCESS
+                : BrightDataBatchStatus.FAILED
 
     await prisma.brightDataBatch.update({
         where: { id: batch.id },
